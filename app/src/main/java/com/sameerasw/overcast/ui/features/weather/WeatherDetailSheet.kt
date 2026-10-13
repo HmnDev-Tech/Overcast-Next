@@ -18,6 +18,10 @@ import androidx.compose.ui.draw.drawWithContent
 import androidx.compose.ui.graphics.BlendMode
 import androidx.compose.ui.graphics.CompositingStrategy
 import androidx.compose.ui.util.lerp
+import androidx.compose.runtime.State
+import androidx.compose.runtime.produceState
+import androidx.window.layout.FoldingFeature
+import androidx.window.layout.WindowInfoTracker
 import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.ui.layout.layout
 import androidx.compose.runtime.mutableFloatStateOf
@@ -320,6 +324,7 @@ fun WeatherScreen(onOpenSettings: () -> Unit = {}) {
         val ambient = remember { mutableFloatStateOf(0f) }
         val immersive = ambient.floatValue > 0.5f
         val rootHeightPx = remember { mutableIntStateOf(0) }
+        val rootWidthPx = remember { mutableIntStateOf(0) }
         val ambientClockPx = remember { mutableIntStateOf(0) }
         val ambientForecastPx = remember { mutableIntStateOf(0) }
         BackHandler(enabled = immersive) { scope.launch { settleAmbient(ambient, 0f, compatibility) } }
@@ -333,7 +338,7 @@ fun WeatherScreen(onOpenSettings: () -> Unit = {}) {
         DisposableEffect(Unit) {
             onDispose { window?.let { WindowCompat.getInsetsController(it, view).show(WindowInsetsCompat.Type.systemBars()) } }
         }
-        Box(Modifier.fillMaxSize().onSizeChanged { rootHeightPx.intValue = it.height }.weatherGlass(effectSpec, snapshot, now, { collapse.floatValue }, effectRamp, !sheetOpen)) {
+        Box(Modifier.fillMaxSize().onSizeChanged { rootHeightPx.intValue = it.height; rootWidthPx.intValue = it.width }.weatherGlass(effectSpec, snapshot, now, { collapse.floatValue }, effectRamp, !sheetOpen)) {
                 WeatherSkyBackground(snapshot, now, palette, collapse = { collapse.floatValue })
                 val topFadePx = if (headerBottom.floatValue > 0f) {
                     val expandedFade = with(density) { 36.dp.toPx() }
@@ -376,9 +381,15 @@ fun WeatherScreen(onOpenSettings: () -> Unit = {}) {
                     )
                 }
                 val scrollState = rememberScrollState()
+                val wide = LocalConfiguration.current.screenWidthDp >= TWO_PANE_MIN_WIDTH_DP
+                val fold by rememberVerticalFold()
+                val rootWidth = rootWidthPx.intValue
+                val foldSplit = fold?.takeIf { rootWidth > 0 && it.left > 0 && it.right < rootWidth }
+                val leftFraction = foldSplit?.let { it.left.toFloat() / rootWidth } ?: TWO_PANE_LEFT_WEIGHT
+                val hingeFraction = foldSplit?.let { (it.right - it.left).toFloat() / rootWidth } ?: 0f
                 val maxCollapsePx = with(density) { COLLAPSE_RANGE.toPx() }
                 val ambientRangePx = with(density) { AMBIENT_RANGE_DP.dp.toPx() }
-                val connection = remember(maxCollapsePx, ambientRangePx, compatibility) {
+                val connection = remember(maxCollapsePx, ambientRangePx, compatibility, wide) {
                     object : NestedScrollConnection {
                         override fun onPreScroll(available: Offset, source: NestedScrollSource): Offset {
                             if (available.y != 0f) scrollTick.intValue++
@@ -388,7 +399,7 @@ fun WeatherScreen(onOpenSettings: () -> Unit = {}) {
                                 ambient.floatValue = next
                                 return Offset(0f, used)
                             }
-                            if (available.y >= 0f || collapse.floatValue >= 1f) return Offset.Zero
+                            if (wide || available.y >= 0f || collapse.floatValue >= 1f) return Offset.Zero
                             val next = (collapse.floatValue - available.y / maxCollapsePx).coerceIn(0f, 1f)
                             val consumed = -(next - collapse.floatValue) * maxCollapsePx
                             collapse.floatValue = next
@@ -492,41 +503,91 @@ fun WeatherScreen(onOpenSettings: () -> Unit = {}) {
                                     .progressiveBlur(blurRadius = 40f, height = topFadePx, direction = BlurDirection.TOP, showGradientOverlay = false)
                                     .progressiveBlur(blurRadius = 14f, height = bottomFadePx, direction = BlurDirection.BOTTOM, showGradientOverlay = false),
                             ) {
-                                Column(
-                                    Modifier
-                                        .fillMaxSize()
-                                        .verticalScroll(scrollState)
-                                        .padding(top = with(density) { topPx.toDp() } + 28.dp)
-                                        .navigationBarsPadding()
-                                        .padding(bottom = 40.dp),
-                                    verticalArrangement = Arrangement.spacedBy(20.dp),
-                                ) {
-                                    AlertsSection(snapshot.activeAlerts().sortedByDescending { it.severity.ordinal }, palette)
-                                    HourlySection(snapshot, units.temperature, palette)
-                                    snapshot.daily.orEmpty().takeIf { it.isNotEmpty() }
-                                        ?.let { DailySection(it, units.temperature, palette, Modifier.padding(horizontal = SIDE_PADDING)) }
-                                    DetailsSection(snapshot, units, palette, Modifier.padding(horizontal = SIDE_PADDING))
-                                    SunSection(snapshot, palette, Modifier.padding(horizontal = SIDE_PADDING))
-                                    Footer(
-                                        modifier = Modifier.padding(horizontal = SIDE_PADDING).rainSurface("footer"),
-                                        snapshot = snapshot,
-                                        error = state.error,
-                                        palette = palette,
-                                        refreshing = state.loading,
-                                        onRefresh = {
-                                            HapticUtil.performVirtualKeyHaptic(view)
-                                            scope.launch { WeatherRepository.refresh(context, force = true) }
-                                        },
-                                        onOpenSettings = onOpenSettings,
-                                    )
+                                if (!wide) {
+                                    Column(
+                                        Modifier
+                                            .fillMaxSize()
+                                            .verticalScroll(scrollState)
+                                            .padding(top = with(density) { topPx.toDp() } + 28.dp)
+                                            .navigationBarsPadding()
+                                            .padding(bottom = 40.dp),
+                                        verticalArrangement = Arrangement.spacedBy(20.dp),
+                                    ) {
+                                        AlertsSection(snapshot.activeAlerts().sortedByDescending { it.severity.ordinal }, palette)
+                                        HourlySection(snapshot, units.temperature, palette)
+                                        snapshot.daily.orEmpty().takeIf { it.isNotEmpty() }
+                                            ?.let { DailySection(it, units.temperature, palette, Modifier.padding(horizontal = SIDE_PADDING)) }
+                                        DetailsSection(snapshot, units, palette, Modifier.padding(horizontal = SIDE_PADDING))
+                                        SunSection(snapshot, palette, Modifier.padding(horizontal = SIDE_PADDING))
+                                        Footer(
+                                            modifier = Modifier.padding(horizontal = SIDE_PADDING).rainSurface("footer"),
+                                            snapshot = snapshot,
+                                            error = state.error,
+                                            palette = palette,
+                                            refreshing = state.loading,
+                                            onRefresh = {
+                                                HapticUtil.performVirtualKeyHaptic(view)
+                                                scope.launch { WeatherRepository.refresh(context, force = true) }
+                                            },
+                                            onOpenSettings = onOpenSettings,
+                                        )
+                                    }
+                                } else {
+                                    Column(
+                                        Modifier
+                                            .fillMaxSize()
+                                            .verticalScroll(scrollState)
+                                            .navigationBarsPadding()
+                                            .padding(bottom = 40.dp),
+                                    ) {
+                                        Row(Modifier.fillMaxWidth()) {
+                                            Column(
+                                                Modifier
+                                                    .weight(leftFraction)
+                                                    .padding(top = with(density) { topPx.toDp() } + 28.dp),
+                                                verticalArrangement = Arrangement.spacedBy(20.dp),
+                                            ) {
+                                            AlertsSection(snapshot.activeAlerts().sortedByDescending { it.severity.ordinal }, palette)
+                                            snapshot.daily.orEmpty().takeIf { it.isNotEmpty() }
+                                                ?.let { DailySection(it, units.temperature, palette, Modifier.padding(horizontal = SIDE_PADDING)) }
+                                            SunSection(snapshot, palette, Modifier.padding(horizontal = SIDE_PADDING))
+                                            }
+                                            if (hingeFraction > 0f) Spacer(Modifier.weight(hingeFraction))
+                                            Column(
+                                                Modifier
+                                                    .weight((1f - leftFraction - hingeFraction).coerceAtLeast(0.05f))
+                                                    .statusBarsPadding()
+                                                    .padding(top = 28.dp),
+                                                verticalArrangement = Arrangement.spacedBy(20.dp),
+                                            ) {
+                                            HourlySection(snapshot, units.temperature, palette)
+                                            DetailsSection(snapshot, units, palette, Modifier.padding(horizontal = SIDE_PADDING))
+                                            Footer(
+                                                modifier = Modifier.padding(horizontal = SIDE_PADDING).rainSurface("footer"),
+                                                snapshot = snapshot,
+                                                error = state.error,
+                                                palette = palette,
+                                                refreshing = state.loading,
+                                                onRefresh = {
+                                                    HapticUtil.performVirtualKeyHaptic(view)
+                                                    scope.launch { WeatherRepository.refresh(context, force = true) }
+                                                },
+                                                onOpenSettings = onOpenSettings,
+                                            )
+                                            }
+                                        }
+                                    }
                                 }
                             }
                             val showAmbientForecast = settings.isAmbientForecastEnabled() &&
                                 ambientForecastFits(rootHeightPx.intValue, ambientClockPx.intValue, ambientForecastPx.intValue)
                             Column(
                                 Modifier
-                                    .align(Alignment.TopCenter)
-                                    .fillMaxWidth()
+                                    .align(if (wide) Alignment.TopStart else Alignment.TopCenter)
+                                    .then(if (wide) Modifier.fillMaxWidth(lerp(leftFraction, 1f, ambient.floatValue)) else Modifier.fillMaxWidth())
+                                    .graphicsLayer {
+                                        if (wide && ambient.floatValue == 0f) translationY = -scrollState.value.toFloat()
+                                    }
                                     .onSizeChanged { if (ambient.floatValue == 0f) topPx = it.height.toFloat() }
                                     .statusBarsPadding(),
                                 horizontalAlignment = Alignment.CenterHorizontally,
@@ -648,6 +709,29 @@ private const val EFFECTS_DELAY_MS = 450L
 private const val EFFECTS_FADE_MS = 1800
 private const val REFRESH_DELAY_MS = 600L
 private val COLLAPSE_RANGE = 520.dp
+private const val TWO_PANE_MIN_WIDTH_DP = 600
+
+@Composable
+private fun rememberVerticalFold(): State<android.graphics.Rect?> {
+    val context = LocalContext.current
+    val activity = remember(context) { context.findActivity() }
+    return produceState<android.graphics.Rect?>(null, activity) {
+        if (activity == null) return@produceState
+        WindowInfoTracker.getOrCreate(activity).windowLayoutInfo(activity).collect { info ->
+            value = info.displayFeatures
+                .filterIsInstance<FoldingFeature>()
+                .firstOrNull { it.isSeparating && it.orientation == FoldingFeature.Orientation.VERTICAL }
+                ?.bounds
+        }
+    }
+}
+
+private tailrec fun Context.findActivity(): Activity? = when (this) {
+    is Activity -> this
+    is ContextWrapper -> baseContext.findActivity()
+    else -> null
+}
+private const val TWO_PANE_LEFT_WEIGHT = 0.42f
 private const val COMBINE_AT = 0.9f
 private const val HEADER_EXTRAS_DP = 170f
 
