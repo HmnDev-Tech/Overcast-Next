@@ -38,6 +38,7 @@ class SettingsRepository(
         const val KEY_COMPATIBILITY_MODE = "compatibility_mode"
         const val KEY_AMBIENT_FORECAST = "ambient_show_forecast"
         const val KEY_AMBIENT_TIMELINE = "ambient_timeline_mode"
+        const val KEY_SCREENSAVER_AUTO_ANIMATE = "screensaver_auto_animate"
         const val KEY_WEATHER_REFRESH_MINUTES = "weather_refresh_minutes"
         const val KEY_WEATHER_EFFECTS = "weather_effects"
         const val KEY_WEATHER_HAPTICS = "weather_haptics"
@@ -170,6 +171,10 @@ class SettingsRepository(
     fun isAmbientTimelineEnabled(): Boolean = getBoolean(KEY_AMBIENT_TIMELINE, false)
 
     fun setAmbientTimelineEnabled(enabled: Boolean) = putBoolean(KEY_AMBIENT_TIMELINE, enabled)
+
+    fun isScreensaverAutoAnimateEnabled(): Boolean = getBoolean(KEY_SCREENSAVER_AUTO_ANIMATE, false)
+
+    fun setScreensaverAutoAnimateEnabled(enabled: Boolean) = putBoolean(KEY_SCREENSAVER_AUTO_ANIMATE, enabled)
 
     fun setAmbientForecastEnabled(enabled: Boolean) = putBoolean(KEY_AMBIENT_FORECAST, enabled)
 

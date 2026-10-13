@@ -18,6 +18,7 @@
     <string name="weather_detail_sunset">Sunset</string>
     <string name="weather_detail_moon">Moon</string>
     <string name="timeline_mode">Timeline mode</string>
+    <string name="screensaver_auto_animate">Auto scrub screensaver</string>
     <string name="timeline_now">Now</string>
     <string name="timeline_tomorrow">Tomorrow</string>
     <string name="timeline_back_to_now">Back to now</string>

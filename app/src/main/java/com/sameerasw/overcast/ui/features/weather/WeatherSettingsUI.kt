@@ -93,6 +93,7 @@ fun WeatherSettingsUI(
     var compatibility by remember { mutableStateOf(settings.isCompatibilityMode()) }
     var ambientForecast by remember { mutableStateOf(settings.isAmbientForecastEnabled()) }
     var ambientTimeline by remember { mutableStateOf(settings.isAmbientTimelineEnabled()) }
+    var screensaverAutoAnimate by remember { mutableStateOf(settings.isScreensaverAutoAnimateEnabled()) }
     var unitsExpanded by remember { mutableStateOf(false) }
     var showCompatibilityInfo by remember { mutableStateOf(false) }
     var effects by remember { mutableStateOf(settings.isWeatherEffectsEnabled()) }
@@ -409,6 +410,16 @@ fun WeatherSettingsUI(
                         HapticUtil.performVirtualKeyHaptic(view)
                         ambientTimeline = it
                         settings.setAmbientTimelineEnabled(it)
+                    },
+                )
+                IconToggleItem(
+                    iconRes = R.drawable.rounded_schedule_24,
+                    title = stringResource(R.string.screensaver_auto_animate),
+                    isChecked = screensaverAutoAnimate,
+                    onCheckedChange = {
+                        HapticUtil.performVirtualKeyHaptic(view)
+                        screensaverAutoAnimate = it
+                        settings.setScreensaverAutoAnimateEnabled(it)
                     },
                 )
             }

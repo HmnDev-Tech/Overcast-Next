@@ -149,6 +149,7 @@ internal fun AmbientWeatherScene(
     modifier: Modifier = Modifier,
     onDismiss: (() -> Unit)? = null,
     animateIntro: Boolean = false,
+    autoAnimate: Boolean = false,
 ) {
     val snapshot = presentation.snapshot
     val spec = presentation.effectSpec
@@ -164,6 +165,16 @@ internal fun AmbientWeatherScene(
     val view = LocalView.current
     val stepPx = with(LocalDensity.current) { LocalConfiguration.current.screenWidthDp.dp.toPx() } / TIMELINE_STEPS_PER_SCREEN
     val showReturn by remember(timeline) { derivedStateOf { (timeline?.value ?: 0f) > 0.05f } }
+    LaunchedEffect(timeline, autoAnimate) {
+        if (timeline == null || !autoAnimate) return@LaunchedEffect
+        while (true) {
+            delay(TIMELINE_IDLE_MS)
+            val end = timeline.maxPosition.coerceAtMost(TIMELINE_MAX_STEPS)
+            animate(0f, end, animationSpec = tween((end * TIMELINE_STEP_MS).toInt(), easing = FastOutSlowInEasing)) { v, _ -> timeline.set(v) }
+            delay(TIMELINE_HOLD_MS)
+            animate(end, 0f, animationSpec = tween(TIMELINE_RETURN_MS, easing = FastOutSlowInEasing)) { v, _ -> timeline.set(v) }
+        }
+    }
     LaunchedEffect(timeline) {
         if (timeline == null) return@LaunchedEffect
         snapshotFlow { timeline.value.roundToInt() }.drop(1).collect { HapticUtil.performLightHaptic(view) }
@@ -180,7 +191,7 @@ internal fun AmbientWeatherScene(
             modifier.fillMaxSize()
                 .weatherGlass(spec, snapshot, presentation.clock, { 0f }, rise = riseStage)
                 .dismissOnTouch(onDismiss)
-                .then(if (timeline != null) Modifier.timelineGestures(timeline, scope, stepPx, onVerticalDrag = {}, onVerticalEnd = {}) else Modifier),
+                .then(if (timeline != null && !autoAnimate) Modifier.timelineGestures(timeline, scope, stepPx, onVerticalDrag = {}, onVerticalEnd = {}) else Modifier),
         ) {
             WeatherSkyBackground(snapshot, presentation.clock, presentation.palette, { 0f }, riseStage)
             WeatherEffects(
@@ -214,7 +225,7 @@ internal fun AmbientWeatherScene(
                         presentation.palette,
                         Modifier.align(Alignment.TopCenter).onSizeChanged { clockPx.intValue = it.height },
                         timeMillis = presentation.clockLabel.takeIf { timeline != null },
-                        showReturn = showReturn,
+                        showReturn = showReturn && !autoAnimate,
                         atNow = presentation.timelineAtNow,
                         onReturn = {
                             HapticUtil.performVirtualKeyHaptic(view)
@@ -246,6 +257,11 @@ internal fun AmbientWeatherScene(
 
 private const val AMBIENT_INTRO_MS = 2600
 private const val TIMELINE_STEPS_PER_SCREEN = 4f
+private const val TIMELINE_IDLE_MS = 14_000L
+private const val TIMELINE_HOLD_MS = 3_500L
+private const val TIMELINE_STEP_MS = 900
+private const val TIMELINE_RETURN_MS = 3_200
+private const val TIMELINE_MAX_STEPS = 24f
 
 private fun Modifier.dismissOnTouch(onDismiss: (() -> Unit)?): Modifier =
     if (onDismiss == null) {

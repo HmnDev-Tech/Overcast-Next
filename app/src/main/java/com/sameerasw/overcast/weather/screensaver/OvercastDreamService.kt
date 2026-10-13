@@ -82,5 +82,5 @@ private fun DreamContent(onDismiss: () -> Unit) {
         if (WeatherRepository.isStale(context)) WeatherRepository.refresh(context)
     }
     val timeline = remember { WeatherTimeline() }
-    AmbientWeatherScene(rememberWeatherPresentation(state.snapshot, timeline), settings.isAmbientForecastEnabled(), onDismiss = onDismiss, animateIntro = true)
+    AmbientWeatherScene(rememberWeatherPresentation(state.snapshot, timeline), settings.isAmbientForecastEnabled(), onDismiss = onDismiss, animateIntro = true, autoAnimate = settings.isScreensaverAutoAnimateEnabled())
 }
