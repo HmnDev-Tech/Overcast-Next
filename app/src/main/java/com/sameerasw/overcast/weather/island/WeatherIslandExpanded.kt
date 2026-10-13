@@ -60,6 +60,7 @@ import com.sameerasw.overcast.weather.effects.WeatherEffects
 import com.sameerasw.overcast.weather.model.WeatherAlert
 import com.sameerasw.overcast.weather.model.WeatherError
 import com.sameerasw.overcast.weather.model.WeatherSnapshot
+import com.sameerasw.overcast.ui.features.weather.RollingClock
 import com.sameerasw.overcast.ui.features.weather.providerLabel
 import kotlinx.coroutines.delay
 import java.text.SimpleDateFormat
@@ -131,7 +132,7 @@ fun WeatherIslandExpanded(
                     overflow = TextOverflow.Ellipsis,
                     modifier = Modifier.weight(1f),
                 )
-                snapshot?.let { Text(WeatherFormat.temperature(it.tempC, units.temperature), style = title.copy(fontSize = 22.sp)) }
+                snapshot?.let { RollingClock(WeatherFormat.temperature(it.tempC, units.temperature), Color.Unspecified, null, title.copy(fontSize = 22.sp)) }
             }
             Spacer(Modifier.height(6.dp))
             Column(
@@ -232,7 +233,7 @@ private fun HourlyStrip(snapshot: WeatherSnapshot, units: WeatherUnits, iconStyl
             Column(horizontalAlignment = Alignment.CenterHorizontally, verticalArrangement = Arrangement.spacedBy(4.dp)) {
                 Text(formatHour(context, hour.timeMillis), style = body.copy(fontSize = 11.sp))
                 WeatherIcon(hour.condition, hour.isDay, Color.White, Modifier.size(18.dp), iconStyle)
-                Text(WeatherFormat.temperature(hour.tempC, units.temperature), style = body.copy(color = Color.White))
+                RollingClock(WeatherFormat.temperature(hour.tempC, units.temperature), Color.Unspecified, null, body.copy(color = Color.White))
             }
         }
     }
@@ -250,7 +251,7 @@ private fun DetailChip(icon: Int, text: String, modifier: Modifier = Modifier) {
     ) {
         Icon(painterResource(icon), null, tint = MaterialTheme.colorScheme.primary, modifier = Modifier.size(16.dp))
         Spacer(Modifier.width(6.dp))
-        Text(text, style = body.copy(color = Color.White, fontSize = 12.sp), maxLines = 1)
+        RollingClock(text, Color.Unspecified, null, body.copy(color = Color.White, fontSize = 12.sp))
     }
 }
 

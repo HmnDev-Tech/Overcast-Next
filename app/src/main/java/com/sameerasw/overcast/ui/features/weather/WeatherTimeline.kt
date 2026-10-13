@@ -3,6 +3,7 @@ package com.sameerasw.overcast.ui.features.weather
 import android.content.Context
 import androidx.annotation.StringRes
 import androidx.compose.animation.AnimatedContent
+import androidx.compose.animation.SizeTransform
 import androidx.compose.animation.core.Animatable
 import androidx.compose.animation.core.Spring
 import androidx.compose.animation.core.animate
@@ -19,6 +20,7 @@ import androidx.compose.foundation.gestures.drag
 import androidx.compose.foundation.layout.Row
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.key
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.Stable
@@ -27,6 +29,8 @@ import androidx.compose.runtime.mutableFloatStateOf
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.draw.clipToBounds
+import androidx.compose.ui.unit.IntOffset
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.input.pointer.pointerInput
 import androidx.compose.ui.input.pointer.positionChange
@@ -147,18 +151,32 @@ internal fun Modifier.timelineGestures(
 }
 
 @Composable
-internal fun RollingClock(text: String, color: Color, forward: Boolean, style: androidx.compose.ui.text.TextStyle) {
-    Row {
-        text.forEach { char ->
-            AnimatedContent(
-                targetState = char,
-                transitionSpec = {
-                    val direction = if (forward) 1 else -1
-                    (slideInVertically { it * direction } + fadeIn()) togetherWith (slideOutVertically { -it * direction } + fadeOut())
-                },
-                label = "timelineDigit",
-            ) { digit ->
-                Text(digit.toString(), color = color, style = style, maxLines = 1, softWrap = false)
+internal fun RollingClock(
+    text: String,
+    color: Color,
+    forward: Boolean?,
+    style: androidx.compose.ui.text.TextStyle,
+    modifier: Modifier = Modifier,
+) {
+    val tracker = remember { DirectionTracker() }
+    val tracked = tracker.update(text)
+    val rising = forward ?: tracked
+    Row(modifier.clipToBounds()) {
+        text.forEachIndexed { index, char ->
+            key(text.length - index) {
+                AnimatedContent(
+                    targetState = char,
+                    transitionSpec = {
+                        val slide = spring<IntOffset>(dampingRatio = 0.8f, stiffness = 500f)
+                        val sign = if (rising) 1 else -1
+                        (slideInVertically(slide) { sign * it } + fadeIn())
+                            .togetherWith(slideOutVertically(slide) { -sign * it } + fadeOut())
+                            .using(SizeTransform(clip = true))
+                    },
+                    label = "timelineDigit",
+                ) { digit ->
+                    Text(digit.toString(), color = color, style = style, maxLines = 1, softWrap = false)
+                }
             }
         }
     }
@@ -170,18 +188,40 @@ internal fun CounterText(
     color: Color,
     style: androidx.compose.ui.text.TextStyle,
     modifier: Modifier = Modifier,
-    forward: Boolean = true,
+    forward: Boolean? = null,
 ) {
+    val tracker = remember { DirectionTracker() }
+    val tracked = tracker.update(text)
+    val rising = forward ?: tracked
     AnimatedContent(
         targetState = text,
-        modifier = modifier,
+        modifier = modifier.clipToBounds(),
         transitionSpec = {
-            val direction = if (forward) 1 else -1
-            (slideInVertically { it * direction } + fadeIn()) togetherWith (slideOutVertically { -it * direction } + fadeOut())
+            val slide = spring<IntOffset>(dampingRatio = 0.8f, stiffness = 500f)
+            val sign = if (rising) 1 else -1
+            (slideInVertically(slide) { sign * it } + fadeIn())
+                .togetherWith(slideOutVertically(slide) { -sign * it } + fadeOut())
+                .using(SizeTransform(clip = true))
         },
         label = "counterText",
     ) { value ->
         Text(value, color = color, style = style, maxLines = 1, softWrap = false)
+    }
+}
+
+private class DirectionTracker {
+    private var last: String? = null
+    private var rising = true
+
+    fun update(text: String): Boolean {
+        val previous = last
+        if (previous != null && previous != text) {
+            val old = previous.filter(Char::isDigit).toLongOrNull()
+            val new = text.filter(Char::isDigit).toLongOrNull()
+            if (old != null && new != null && old != new) rising = new > old
+        }
+        last = text
+        return rising
     }
 }
 
