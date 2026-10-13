@@ -163,6 +163,8 @@ import androidx.compose.animation.AnimatedContent
 import androidx.compose.animation.fadeIn
 import androidx.compose.animation.fadeOut
 import androidx.compose.animation.togetherWith
+import androidx.compose.animation.slideInVertically
+import androidx.compose.animation.slideOutVertically
 import androidx.compose.runtime.derivedStateOf
 import androidx.compose.runtime.snapshotFlow
 import kotlinx.coroutines.launch
@@ -196,6 +198,7 @@ internal class WeatherPresentation(
     val timeline: WeatherTimeline? = null,
     val clock: () -> Long = { now },
     val clockLabel: Long = now,
+    val timelineAtNow: Boolean = true,
 )
 
 @Composable
@@ -262,7 +265,7 @@ internal fun rememberWeatherPresentation(real: WeatherSnapshot?, timeline: Weath
     val activeTimeline = timeline?.takeIf { timelineActive }
     val clockProvider = remember(activeTimeline, now) { if (activeTimeline != null) ({ activeTimeline.timeAt(activeTimeline.value) }) else ({ now }) }
     val clockLabel = if (timelineActive && step > 0) points[step.coerceIn(0, points.lastIndex)].timeMillis else now
-    return WeatherPresentation(snapshot, palette, effectSpec, units, now, haptics, iconStyle, activeTimeline, clockProvider, clockLabel)
+    return WeatherPresentation(snapshot, palette, effectSpec, units, now, haptics, iconStyle, activeTimeline, clockProvider, clockLabel, step == 0)
 }
 
 @OptIn(ExperimentalMaterial3Api::class, ExperimentalMaterial3ExpressiveApi::class)
@@ -674,7 +677,9 @@ fun WeatherScreen(onOpenSettings: () -> Unit = {}) {
                                         .ambientCenter(
                                             ambient.floatValue,
                                             (rootHeightPx.intValue - ambientInset * 2).coerceAtLeast(0),
-                                            ambientAvailable(rootHeightPx.intValue, ambientClockPx.intValue, if (showAmbientForecast || timelineActive) ambientForecastPx.intValue else 0),
+                                            rememberAnimatedAvailable(
+                                                ambientAvailable(rootHeightPx.intValue, ambientClockPx.intValue, if (showAmbientForecast || timelineActive) ambientForecastPx.intValue else 0),
+                                            ),
                                         ),
                                 )
                             }
@@ -685,6 +690,7 @@ fun WeatherScreen(onOpenSettings: () -> Unit = {}) {
                                     Modifier.align(Alignment.TopCenter).onSizeChanged { ambientClockPx.intValue = it.height },
                                     timeMillis = presentation.clockLabel.takeIf { timelineActive },
                                     showReturn = timelineActive && showTimelineReturn,
+                                    atNow = presentation.timelineAtNow,
                                     onReturn = {
                                         HapticUtil.performVirtualKeyHaptic(view)
                                         timeline.animateTo(scope, 0f)
@@ -881,6 +887,9 @@ internal fun temperatureFont(widthAxis: Int, weightAxis: Int): FontFamily =
 @Composable
 internal fun Header(snapshot: WeatherSnapshot, unit: TemperatureUnit, palette: WeatherPalette, progress: Float, ambient: Float, modifier: Modifier) {
     val number = WeatherFormat.temperature(snapshot.tempC, unit).removeSuffix("°")
+    var previousNumber by remember { mutableStateOf(number) }
+    val numberRising = (number.toIntOrNull() ?: 0) >= (previousNumber.toIntOrNull() ?: 0)
+    SideEffect { previousNumber = number }
     
     val screenHeightDp = LocalConfiguration.current.screenHeightDp
     val fontScale = LocalDensity.current.fontScale
@@ -905,23 +914,25 @@ internal fun Header(snapshot: WeatherSnapshot, unit: TemperatureUnit, palette: W
                 digits = {
                     Row(verticalAlignment = Alignment.Top, modifier = Modifier.heatHaze(hazeStrength)) {
                         DegreeSign(size, font, Color.Transparent)
-                        Text(
+                        RollingClock(
                             number,
-                            color = palette.onBase,
-                            fontFamily = font,
-                            fontSize = size,
-                            lineHeight = size * 0.86f,
-                            letterSpacing = letterSpacing.sp,
-                            maxLines = 1,
-                            softWrap = false,
+                            palette.onBase,
+                            numberRising,
+                            TextStyle(fontFamily = font, fontSize = size, lineHeight = size * 0.86f, letterSpacing = letterSpacing.sp),
                         )
                         DegreeSign(size, font, palette.onBase)
                     }
                 },
                 condition = {
-                    Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(10.dp)) {
-                        WeatherIcon(snapshot.condition, snapshot.isDay, palette.accent, Modifier.size(32.dp))
-                        Text(snapshot.conditionText, color = palette.onBase, style = MaterialTheme.typography.headlineSmall, maxLines = 1, overflow = TextOverflow.Ellipsis)
+                    AnimatedContent(
+                        targetState = Triple(snapshot.condition, snapshot.isDay, snapshot.conditionText),
+                        transitionSpec = { (slideInVertically { it } + fadeIn()) togetherWith (slideOutVertically { -it } + fadeOut()) },
+                        label = "headerCondition",
+                    ) { (condition, isDay, text) ->
+                        Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(10.dp)) {
+                            WeatherIcon(condition, isDay, palette.accent, Modifier.size(32.dp))
+                            Text(text, color = palette.onBase, style = MaterialTheme.typography.headlineSmall, maxLines = 1, overflow = TextOverflow.Ellipsis)
+                        }
                     }
                 },
             )
@@ -1471,15 +1482,14 @@ private const val AMBIENT_SETTLE_VELOCITY = 1200f
 internal fun ambientAvailable(rootPx: Int, clockPx: Int, forecastPx: Int): Int =
     if (rootPx <= 0 || clockPx <= 0) 0 else (rootPx - 2 * maxOf(clockPx, forecastPx)).coerceAtLeast(1)
 
-// The forecast is dropped when it would leave the temperature less than a third of the screen.
 internal fun ambientForecastFits(rootPx: Int, clockPx: Int, forecastPx: Int): Boolean =
     rootPx <= 0 || ambientAvailable(rootPx, clockPx, forecastPx) >= rootPx / 3
 
-// Centres the header in the ambient band and scales it down whenever it is taller than the room between the clock and the forecast.
-internal fun Modifier.ambientCenter(fraction: Float, fullHeightPx: Int, availablePx: Int = 0): Modifier = layout { measurable, constraints ->
+internal fun Modifier.ambientCenter(fraction: Float, fullHeightPx: Int, availablePx: () -> Int = { 0 }): Modifier = layout { measurable, constraints ->
     val placeable = measurable.measure(constraints)
     val height = lerp(placeable.height.toFloat(), maxOf(fullHeightPx, placeable.height).toFloat(), fraction).roundToInt()
-    val fit = if (availablePx > 0 && placeable.height > availablePx) availablePx.toFloat() / placeable.height else 1f
+    val available = availablePx()
+    val fit = if (available > 0 && placeable.height > available) available.toFloat() / placeable.height else 1f
     val scale = lerp(1f, fit, fraction)
     layout(placeable.width, height) {
         placeable.placeRelativeWithLayer(0, ((height - placeable.height) / 2f * fraction).roundToInt()) {
@@ -1506,6 +1516,7 @@ internal fun AmbientClock(
     modifier: Modifier,
     timeMillis: Long? = null,
     showReturn: Boolean = false,
+    atNow: Boolean = true,
     onReturn: () -> Unit = {},
 ) {
     val context = LocalContext.current
@@ -1535,10 +1546,8 @@ internal fun AmbientClock(
         horizontalAlignment = Alignment.CenterHorizontally,
     ) {
         if (timeMillis != null) {
-            val dayLabel = timelineDayLabel(context, shown, now)
-            AnimatedContent(targetState = dayLabel, transitionSpec = { fadeIn() togetherWith fadeOut() }, label = "timelineDay") { label ->
-                Text(label, color = palette.onBaseMuted, style = MaterialTheme.typography.titleMedium, maxLines = 1)
-            }
+            val dayLabel = if (atNow) context.getString(R.string.timeline_now) else timelineDayLabel(context, shown, now)
+            CounterText(dayLabel, palette.onBaseMuted, MaterialTheme.typography.titleMedium, forward = forward)
         }
         Row(verticalAlignment = Alignment.CenterVertically) {
         if (timeMillis != null) {
@@ -1553,7 +1562,7 @@ internal fun AmbientClock(
                         scaleY = 0.6f + 0.4f * reveal
                     },
                 ) {
-                    Icon(painterResource(R.drawable.rounded_schedule_24), stringResource(R.string.timeline_back_to_now), tint = palette.onBase)
+                    Icon(painterResource(R.drawable.rounded_history_24), stringResource(R.string.timeline_back_to_now), tint = palette.onBase)
                 }
             }
         }
@@ -1578,24 +1587,24 @@ private fun timelineDayLabel(context: Context, shown: Long, now: Long): String {
 
 @Composable
 internal fun TimelineRain(ambient: () -> Float, chance: Int?, palette: WeatherPalette, modifier: Modifier = Modifier) {
-    if (chance == null) return
-    var previous by remember { mutableIntStateOf(chance) }
-    val forward = chance >= previous
-    SideEffect { previous = chance }
+    var last by remember { mutableIntStateOf(chance ?: 0) }
+    val shown = chance ?: last
+    val forward = shown >= last
+    SideEffect { last = shown }
     Row(
         modifier
             .windowInsetsPadding(WindowInsets.navigationBarsIgnoringVisibility)
             .padding(bottom = AMBIENT_EDGE_GAP)
             .graphicsLayer {
                 val reveal = ((ambient() - 0.4f) / 0.6f).coerceIn(0f, 1f)
-                alpha = reveal
+                alpha = if (chance == null) 0f else reveal
                 translationY = (1f - reveal) * 16.dp.toPx()
             },
         verticalAlignment = Alignment.CenterVertically,
         horizontalArrangement = Arrangement.spacedBy(8.dp),
     ) {
         Icon(painterResource(R.drawable.rounded_rainy_24), null, tint = palette.accent, modifier = Modifier.size(28.dp))
-        RollingClock("$chance%", palette.onBase, forward, MaterialTheme.typography.headlineMedium)
+        RollingClock("$shown%", palette.onBase, forward, MaterialTheme.typography.headlineMedium)
     }
 }
 

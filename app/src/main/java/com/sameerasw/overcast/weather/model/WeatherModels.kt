@@ -121,10 +121,8 @@ data class WeatherSnapshot(
 ) {
     fun activeAlerts(now: Long = System.currentTimeMillis()): List<WeatherAlert> = alerts.filter { it.isActive(now) }
 
-    // A stored snapshot can be older than its forecast: hours and days that have already passed are dropped, the current hour stays.
     fun upcomingHours(now: Long = System.currentTimeMillis()): List<HourlyForecast> = hourly.filter { it.timeMillis + HOUR_MS > now }
 
-    // The headline high and low belong to the day the snapshot was taken; once that day is over, today's daily entry takes over.
     fun todayHighC(now: Long = System.currentTimeMillis()): Double = todayEntry(now)?.highC ?: highC
 
     fun todayLowC(now: Long = System.currentTimeMillis()): Double = todayEntry(now)?.lowC ?: lowC

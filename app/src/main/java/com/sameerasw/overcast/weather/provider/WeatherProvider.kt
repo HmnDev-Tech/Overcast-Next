@@ -10,7 +10,6 @@ interface WeatherProvider {
     val displayName: String
     val requiresApiKey: Boolean
     val signupUrl: String?
-    // Minimum minutes between fetches for providers with a daily request cap; 0 means no limit.
     val minRefreshMinutes: Int get() = 0
     @get:StringRes val attributionRes: Int? get() = null
 

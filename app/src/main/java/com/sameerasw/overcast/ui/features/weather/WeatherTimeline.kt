@@ -3,6 +3,7 @@ package com.sameerasw.overcast.ui.features.weather
 import android.content.Context
 import androidx.annotation.StringRes
 import androidx.compose.animation.AnimatedContent
+import androidx.compose.animation.core.Animatable
 import androidx.compose.animation.core.Spring
 import androidx.compose.animation.core.animate
 import androidx.compose.animation.core.spring
@@ -18,6 +19,8 @@ import androidx.compose.foundation.gestures.drag
 import androidx.compose.foundation.layout.Row
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.LaunchedEffect
+import androidx.compose.runtime.remember
 import androidx.compose.runtime.Stable
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableFloatStateOf
@@ -49,7 +52,6 @@ internal class TimelinePoint(
     val conditionText: String?,
 )
 
-// Now first, then every hour the forecast covers.
 internal fun timelinePoints(snapshot: WeatherSnapshot, now: Long): List<TimelinePoint> {
     val current = TimelinePoint(now, snapshot.tempC, snapshot.condition, snapshot.isDay, snapshot.chanceOfRain, snapshot.conditionText)
     val later = snapshot.upcomingHours(now).filter { it.timeMillis > now }
@@ -57,7 +59,6 @@ internal fun timelinePoints(snapshot: WeatherSnapshot, now: Long): List<Timeline
     return listOf(current) + later
 }
 
-// The timeline position counts forecast steps from now: 0 is the current weather, 1 the next hour, and in between everything is interpolated.
 @Stable
 internal class WeatherTimeline {
     var value by mutableFloatStateOf(0f)
@@ -90,7 +91,6 @@ internal class WeatherTimeline {
         }
     }
 
-    // Lets go of a drag: the position glides on with the finger's momentum and lands on a step.
     fun settle(scope: CoroutineScope, velocityPxPerSec: Float, stepPx: Float) {
         val stepsPerSec = -velocityPxPerSec / stepPx
         animateTo(scope, (value + stepsPerSec * 0.18f).roundToInt().toFloat(), stepsPerSec)
@@ -141,7 +141,6 @@ internal fun Modifier.timelineGestures(
     }
 }
 
-// Digits that roll up as the time moves forward and down when it goes back.
 @Composable
 internal fun RollingClock(text: String, color: Color, forward: Boolean, style: androidx.compose.ui.text.TextStyle) {
     Row {
@@ -154,10 +153,41 @@ internal fun RollingClock(text: String, color: Color, forward: Boolean, style: a
                 },
                 label = "timelineDigit",
             ) { digit ->
-                Text(digit.toString(), color = color, style = style, maxLines = 1)
+                Text(digit.toString(), color = color, style = style, maxLines = 1, softWrap = false)
             }
         }
     }
+}
+
+@Composable
+internal fun CounterText(
+    text: String,
+    color: Color,
+    style: androidx.compose.ui.text.TextStyle,
+    modifier: Modifier = Modifier,
+    forward: Boolean = true,
+) {
+    AnimatedContent(
+        targetState = text,
+        modifier = modifier,
+        transitionSpec = {
+            val direction = if (forward) 1 else -1
+            (slideInVertically { it * direction } + fadeIn()) togetherWith (slideOutVertically { -it * direction } + fadeOut())
+        },
+        label = "counterText",
+    ) { value ->
+        Text(value, color = color, style = style, maxLines = 1, softWrap = false)
+    }
+}
+
+@Composable
+internal fun rememberAnimatedAvailable(target: Int): () -> Int {
+    val animated = remember { Animatable(0f) }
+    LaunchedEffect(target) {
+        if (target <= 0) return@LaunchedEffect
+        if (animated.value <= 0f) animated.snapTo(target.toFloat()) else animated.animateTo(target.toFloat(), spring(stiffness = Spring.StiffnessMediumLow))
+    }
+    return { animated.value.roundToInt() }
 }
 
 @StringRes

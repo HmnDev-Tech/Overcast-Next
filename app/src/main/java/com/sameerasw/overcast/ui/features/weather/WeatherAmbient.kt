@@ -197,7 +197,7 @@ internal fun AmbientWeatherScene(
                         1f,
                         Modifier
                             .padding(horizontal = SIDE_PADDING)
-                            .ambientCenter(1f, maxHeightPx, ambientAvailable(maxHeightPx, clockPx.intValue, if (forecastShown || timeline != null) forecastPx.intValue else 0))
+                            .ambientCenter(1f, maxHeightPx, rememberAnimatedAvailable(ambientAvailable(maxHeightPx, clockPx.intValue, if (forecastShown || timeline != null) forecastPx.intValue else 0)))
                             .graphicsLayer {
                                 val reveal = stage(0.15f, 0.65f)
                                 alpha = reveal
@@ -209,6 +209,7 @@ internal fun AmbientWeatherScene(
                         presentation.palette,
                         Modifier.align(Alignment.TopCenter).onSizeChanged { clockPx.intValue = it.height },
                         timeMillis = presentation.clockLabel.takeIf { timeline != null },
+                        atNow = presentation.timelineAtNow,
                     )
                     if (timeline != null) {
                         TimelineRain(

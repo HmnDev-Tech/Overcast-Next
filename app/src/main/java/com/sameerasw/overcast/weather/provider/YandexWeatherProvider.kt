@@ -21,7 +21,6 @@ class YandexWeatherProvider : WeatherProvider {
     override val displayName = "Yandex Weather"
     override val requiresApiKey = true
     override val signupUrl = "https://yandex.ru/pogoda/b2b/console/smarthome"
-    // The tariff allows 30 requests a day. A 50-minute gap keeps any rolling day under that; the repository enforces it.
     override val minRefreshMinutes = 50
     override val attributionRes = R.string.weather_attribution_yandex
 
@@ -45,7 +44,6 @@ class YandexWeatherProvider : WeatherProvider {
 
     override suspend fun searchCities(query: String, apiKey: String?): List<CityResult> = ProviderHttp.searchCities(query)
 
-    // GraphQL reports failures with HTTP 200 and an errors array instead of data.
     private fun throwOnApiErrors(json: JSONObject) {
         if (!json.isNull("data")) return
         val message = json.optJSONArray("errors")?.optJSONObject(0)?.optString("message").orEmpty()
@@ -148,7 +146,6 @@ class YandexWeatherProvider : WeatherProvider {
         )
     }
 
-    // Highs and lows come from the hourly temperatures, since the free tariff has no daily summary.
     private fun dayFrom(day: JSONObject): DailyForecast? {
         val hours = day.getJSONArray("hours")
         if (hours.length() == 0) return null
@@ -163,7 +160,6 @@ class YandexWeatherProvider : WeatherProvider {
         )
     }
 
-    // The free tariff has no daytime field, so the day's sunrise and sunset decide; night icons end in "_n", for example "skc_n", as a fallback.
     private fun isDaytime(timestampS: Long, day: JSONObject, icon: String): Boolean {
         val sunrise = day.optLong("sunriseTimestamp")
         val sunset = day.optLong("sunsetTimestamp")
