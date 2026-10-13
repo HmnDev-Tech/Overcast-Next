@@ -139,8 +139,8 @@ private fun WeatherWidgetContent(
     
     val sectionGap = spacing * 0.5f
     // The forecast row only appears once the widget is tall enough to hold it alongside the temperature.
-    val showForecast = forecastItems.isNotEmpty() && size.height >= 140.dp
-    val forecastHeight = if (showForecast) (size.height * 0.36f).coerceIn(70.dp, 120.dp) else 0.dp
+    val showForecast = forecastItems.isNotEmpty() && size.height >= 100.dp
+    val forecastHeight = if (showForecast) (size.height * 0.36f).coerceIn(56.dp, 120.dp) else 0.dp
     val forecastGap = if (showForecast) sectionGap else 0.dp
     val topHeight = size.height - padding * 2 - forecastHeight - forecastGap
     val showSubtitle = topHeight >= 72.dp

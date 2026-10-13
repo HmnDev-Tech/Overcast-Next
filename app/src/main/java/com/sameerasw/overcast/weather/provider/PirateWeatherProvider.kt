@@ -110,6 +110,7 @@ class PirateWeatherProvider : WeatherProvider {
                 precipitationMm = num(current, "precipIntensity"),
                 sunriseMillis = num(dailyToday, "sunriseTime")?.toLong()?.times(1000L),
                 sunsetMillis = num(dailyToday, "sunsetTime")?.toLong()?.times(1000L),
+                moonPhase = num(dailyToday, "moonPhase"),
             ),
             daily = (0 until dailyArray.length()).map { i ->
                 val d = dailyArray.getJSONObject(i)

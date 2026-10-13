@@ -1,5 +1,6 @@
 package com.sameerasw.overcast.weather.provider
 
+import com.sameerasw.overcast.weather.MoonPhase
 import com.sameerasw.overcast.weather.model.CityResult
 import com.sameerasw.overcast.weather.model.DailyForecast
 import com.sameerasw.overcast.weather.model.HourlyForecast
@@ -139,6 +140,7 @@ class AccuWeatherProvider : WeatherProvider {
                 precipitationMm = metric(current, "Precip1hr"),
                 sunriseMillis = sun?.optLong("EpochRise", 0L)?.takeIf { it > 0 }?.times(1000L),
                 sunsetMillis = sun?.optLong("EpochSet", 0L)?.takeIf { it > 0 }?.times(1000L),
+                moonPhase = today.optJSONObject("Moon")?.optDouble("Age")?.takeUnless { it.isNaN() }?.let { MoonPhase.fromAgeDays(it) },
             ),
             daily = (0 until days.length()).map { i ->
                 val d = days.getJSONObject(i)

@@ -82,6 +82,7 @@ data class WeatherExtras(
     val precipitationMm: Double? = null,
     val sunriseMillis: Long? = null,
     val sunsetMillis: Long? = null,
+    val moonPhase: Double? = null,
 )
 
 @Keep

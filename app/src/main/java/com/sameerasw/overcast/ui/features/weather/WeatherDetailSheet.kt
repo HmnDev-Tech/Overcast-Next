@@ -153,6 +153,8 @@ import com.sameerasw.overcast.weather.model.WeatherAlert
 import com.sameerasw.overcast.weather.model.WeatherError
 import com.sameerasw.overcast.weather.model.WeatherSnapshot
 import com.sameerasw.overcast.weather.provider.WeatherProviders
+import com.sameerasw.overcast.weather.MoonPhase
+import com.sameerasw.overcast.weather.moonPhaseAt
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.launch
 import java.text.SimpleDateFormat
@@ -652,6 +654,7 @@ internal fun SkyBody(snapshot: WeatherSnapshot, now: Long, collapse: () -> Float
     val hide = (1f - collapse() * 1.6f).coerceIn(0f, 1f)
     if (hide <= 0f) return
     val color = if (isSun) Color(0xFFFFE2A8) else Color(0xFFE6ECFF)
+    val moonPhase = snapshot.moonPhaseAt(now)
     Canvas(
         Modifier
             .fillMaxWidth()
@@ -673,7 +676,11 @@ internal fun SkyBody(snapshot: WeatherSnapshot, now: Long, collapse: () -> Float
             radius = glowRadius,
             center = Offset(x, y),
         )
-        drawCircle(color.copy(alpha = alpha * 0.7f), radius = (if (isSun) 20.dp else 16.dp).toPx(), center = Offset(x, y))
+        if (isSun) {
+            drawCircle(color.copy(alpha = alpha * 0.7f), radius = 20.dp.toPx(), center = Offset(x, y))
+        } else {
+            drawMoonPhase(Offset(x, y), 20.dp.toPx(), moonPhase, color, litAlpha = alpha * 0.8f, darkAlpha = alpha * 0.16f)
+        }
     }
 }
 
@@ -1174,14 +1181,35 @@ private fun DetailTile(detail: Detail, palette: WeatherPalette, modifier: Modifi
 
 @Composable
 private fun SunSection(snapshot: WeatherSnapshot, palette: WeatherPalette, modifier: Modifier) {
-    val rise = snapshot.extras?.sunriseMillis ?: return
-    val set = snapshot.extras?.sunsetMillis ?: return
+    val rise = snapshot.extras?.sunriseMillis
+    val set = snapshot.extras?.sunsetMillis
     val context = LocalContext.current
+    val now by rememberMinuteClock()
+    val phase = snapshot.moonPhaseAt(now)
     Column(modifier) {
         RoundedCardContainer(modifier = Modifier.rainSurface("sun"), spacing = 2.dp, cornerRadius = 28.dp) {
-            Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(2.dp)) {
-                SunTile(R.string.weather_detail_sunrise, formatTime(context, rise), palette, Modifier.weight(1f))
-                SunTile(R.string.weather_detail_sunset, formatTime(context, set), palette, Modifier.weight(1f))
+            if (rise != null && set != null) {
+                Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(2.dp)) {
+                    SunTile(R.string.weather_detail_sunrise, formatTime(context, rise), palette, Modifier.weight(1f))
+                    SunTile(R.string.weather_detail_sunset, formatTime(context, set), palette, Modifier.weight(1f))
+                }
+            }
+            MoonTile(phase, palette, Modifier.fillMaxWidth())
+        }
+    }
+}
+
+@Composable
+private fun MoonTile(phase: Double, palette: WeatherPalette, modifier: Modifier) {
+    Surface(color = palette.card, shape = MaterialTheme.shapes.extraSmall, modifier = modifier) {
+        Row(Modifier.padding(20.dp), verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(16.dp)) {
+            Canvas(Modifier.size(40.dp)) {
+                drawMoonPhase(center, size.minDimension / 2f, phase, palette.onBase, litAlpha = 0.95f, darkAlpha = 0.18f)
+            }
+            Column {
+                Text(stringResource(R.string.weather_detail_moon), color = palette.onBaseMuted, style = MaterialTheme.typography.labelMedium)
+                Text(stringResource(MoonPhase.nameRes(phase)), color = palette.onBase, style = MaterialTheme.typography.headlineSmall)
+                Text("${MoonPhase.illuminationPercent(phase)}%", color = palette.onBaseMuted, style = MaterialTheme.typography.bodyMedium)
             }
         }
     }

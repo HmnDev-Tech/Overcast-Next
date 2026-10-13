@@ -16,6 +16,15 @@
     <string name="weather_detail_rain_chance">Chance of rain</string>
     <string name="weather_detail_sunrise">Sunrise</string>
     <string name="weather_detail_sunset">Sunset</string>
+    <string name="weather_detail_moon">Moon</string>
+    <string name="moon_new">New moon</string>
+    <string name="moon_waxing_crescent">Waxing crescent</string>
+    <string name="moon_first_quarter">First quarter</string>
+    <string name="moon_waxing_gibbous">Waxing gibbous</string>
+    <string name="moon_full">Full moon</string>
+    <string name="moon_waning_gibbous">Waning gibbous</string>
+    <string name="moon_last_quarter">Last quarter</string>
+    <string name="moon_waning_crescent">Waning crescent</string>
     <string name="weather_detail_today">Today</string>
     <string name="weather_detail_uv">UV index</string>
     <string name="weather_detail_visibility">Visibility</string>
