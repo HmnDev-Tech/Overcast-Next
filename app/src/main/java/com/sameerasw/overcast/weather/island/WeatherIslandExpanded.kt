@@ -60,7 +60,7 @@ import com.sameerasw.overcast.weather.effects.WeatherEffects
 import com.sameerasw.overcast.weather.model.WeatherAlert
 import com.sameerasw.overcast.weather.model.WeatherError
 import com.sameerasw.overcast.weather.model.WeatherSnapshot
-import com.sameerasw.overcast.weather.provider.WeatherProviders
+import com.sameerasw.overcast.ui.features.weather.providerLabel
 import kotlinx.coroutines.delay
 import java.text.SimpleDateFormat
 import java.util.Date
@@ -151,9 +151,9 @@ fun WeatherIslandExpanded(
                     WeatherIslandPayload.severeAlert(snapshot)?.let { AlertCard(it) }
                     HourlyStrip(snapshot, units, iconStyle)
                     Row(horizontalArrangement = Arrangement.spacedBy(6.dp)) {
-                        DetailChip(R.drawable.rounded_water_drop_24, "${snapshot.humidity}%", Modifier.weight(1f))
+                        DetailChip(R.drawable.rounded_water_drop_24, snapshot.humidity?.let { "$it%" } ?: "–", Modifier.weight(1f))
                         DetailChip(R.drawable.rounded_air_24, WeatherFormat.wind(snapshot.windKph, units.wind), Modifier.weight(1f))
-                        DetailChip(R.drawable.rounded_rainy_24, "${snapshot.chanceOfRain}%", Modifier.weight(1f))
+                        DetailChip(R.drawable.rounded_rainy_24, snapshot.chanceOfRain?.let { "$it%" } ?: "–", Modifier.weight(1f))
                     }
                     UpdatedRow(snapshot, state.loading, state.error, onKeepAlive, onRefresh)
                 }
@@ -280,7 +280,7 @@ private fun UpdatedRow(
     ).toString()
     Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically) {
         Text(
-            text = if (error != null) errorText(error) else "${WeatherProviders.byId(snapshot.providerId).displayName} - $age",
+            text = if (error != null) errorText(error) else "${providerLabel(snapshot.providerId)} - $age",
             style = body.copy(fontSize = 11.sp),
             maxLines = 1,
             overflow = TextOverflow.Ellipsis,

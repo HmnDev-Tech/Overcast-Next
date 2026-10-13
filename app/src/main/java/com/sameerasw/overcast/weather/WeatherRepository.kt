@@ -4,6 +4,7 @@ import android.content.Context
 import android.location.Location
 import androidx.annotation.Keep
 import com.google.gson.Gson
+import java.util.Locale
 import com.sameerasw.overcast.data.repository.SettingsRepository
 import com.sameerasw.overcast.weather.location.DeviceLocationSource
 import com.sameerasw.overcast.weather.location.WeatherPlaces
@@ -45,6 +46,7 @@ object WeatherRepository {
         val lastDeviceLocation: WeatherLocation? = null,
         val lastDeviceLocationAt: Long? = null,
         val notifiedAlertIds: Set<String>? = null,
+        val lastFetchKey: String? = null,
     )
 
     fun config(context: Context): WeatherConfig = SettingsWeatherConfig(SettingsRepository(context.applicationContext))
@@ -68,7 +70,8 @@ object WeatherRepository {
 
     fun isStale(context: Context): Boolean {
         val snapshot = _state.value.snapshot ?: return true
-        val interval = config(context).refreshIntervalMinutes * 60_000L
+        val settings = config(context)
+        val interval = maxOf(settings.refreshIntervalMinutes, WeatherProviders.byId(settings.providerId).minRefreshMinutes) * 60_000L
         return System.currentTimeMillis() - snapshot.updatedAt >= interval
     }
 
@@ -99,9 +102,16 @@ object WeatherRepository {
                 _state.update { it.copy(error = error, loading = false) }
                 return@withLock false
             }
+            val fetchKey = "${provider.id}:${"%.2f".format(Locale.US, location.latitude)},${"%.2f".format(Locale.US, location.longitude)}"
+            if (provider.minRefreshMinutes > 0 && current != null && cache.lastFetchKey == fetchKey &&
+                System.currentTimeMillis() - current.updatedAt < provider.minRefreshMinutes * 60_000L
+            ) {
+                _state.update { it.copy(loading = false) }
+                return@withLock false
+            }
             try {
                 val snapshot = provider.fetch(location, config.apiKey)
-                cache = cache.copy(snapshot = snapshot)
+                cache = cache.copy(snapshot = snapshot, lastFetchKey = fetchKey)
                 persist(app)
                 _state.value = WeatherState(snapshot = snapshot)
                 WeatherWidgetUpdater.updateAll(app)

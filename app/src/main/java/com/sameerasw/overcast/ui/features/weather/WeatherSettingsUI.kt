@@ -71,6 +71,7 @@ import com.sameerasw.overcast.weather.WindSpeedUnit
 import com.sameerasw.overcast.weather.model.WeatherError
 import com.sameerasw.overcast.weather.provider.OpenMeteoModels
 import com.sameerasw.overcast.weather.provider.WeatherProviders
+import com.sameerasw.overcast.weather.work.WeatherScheduler
 import kotlinx.coroutines.launch
 
 
@@ -124,6 +125,7 @@ fun WeatherSettingsUI(
                             onClick = {
                                 if (option.id != providerId) {
                                     settings.setWeatherProvider(option.id)
+                                    WeatherScheduler.schedule(context, settings.getWeatherRefreshMinutes())
                                     providerId = option.id
                                     savedKey = settings.getWeatherApiKey(option.id).orEmpty()
                                     keyInput = savedKey
@@ -239,6 +241,7 @@ fun WeatherSettingsUI(
                             onClick = {
                                 refreshMinutes = minutes
                                 settings.setWeatherRefreshMinutes(minutes)
+                                WeatherScheduler.schedule(context, minutes)
                             },
                         )
                     }

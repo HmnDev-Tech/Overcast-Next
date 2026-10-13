@@ -43,6 +43,7 @@ Overcast reads from the source you choose in settings. API keys are kept on the 
 | Visual Crossing | Yes | |
 | OpenWeatherMap | Yes | |
 | WeatherAPI.com | Yes | |
+| Yandex Weather | Yes | Free key for personal, non-commercial use. Today and tomorrow only, 30 requests a day. No humidity or pressure. Yandex requires its attribution. |
 
 Alert coverage depends on the source. Not every provider returns alerts for every region.
 

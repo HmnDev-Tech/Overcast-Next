@@ -147,4 +147,6 @@
     <string name="onboarding_finish">Finish</string>
     <string name="dev_reset_welcome_title">Reset welcome</string>
     <string name="dev_reset_welcome_done">Welcome will show again on next launch</string>
+    <!-- Required by the Yandex Weather terms (point 2.4); keep the wording. -->
+    <string name="weather_attribution_yandex">The data is provided by the Yandex Weather service.</string>
 </resources>

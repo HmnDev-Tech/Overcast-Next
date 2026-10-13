@@ -1,5 +1,6 @@
 package com.sameerasw.overcast.weather.provider
 
+import androidx.annotation.StringRes
 import com.sameerasw.overcast.weather.model.CityResult
 import com.sameerasw.overcast.weather.model.WeatherLocation
 import com.sameerasw.overcast.weather.model.WeatherSnapshot
@@ -9,6 +10,9 @@ interface WeatherProvider {
     val displayName: String
     val requiresApiKey: Boolean
     val signupUrl: String?
+    // Minimum minutes between fetches for providers with a daily request cap; 0 means no limit.
+    val minRefreshMinutes: Int get() = 0
+    @get:StringRes val attributionRes: Int? get() = null
 
     suspend fun fetch(location: WeatherLocation, apiKey: String?): WeatherSnapshot
 
@@ -30,6 +34,7 @@ object WeatherProviders {
         OpenWeatherMapProvider(),
         WeatherApiProvider(),
         AccuWeatherProvider(),
+        YandexWeatherProvider(),
     )
 
     val default: WeatherProvider get() = all.first()
