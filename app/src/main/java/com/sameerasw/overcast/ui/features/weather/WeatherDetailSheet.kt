@@ -320,6 +320,8 @@ fun WeatherScreen(onOpenSettings: () -> Unit = {}) {
         val ambient = remember { mutableFloatStateOf(0f) }
         val immersive = ambient.floatValue > 0.5f
         val rootHeightPx = remember { mutableIntStateOf(0) }
+        val ambientClockPx = remember { mutableIntStateOf(0) }
+        val ambientForecastPx = remember { mutableIntStateOf(0) }
         BackHandler(enabled = immersive) { scope.launch { settleAmbient(ambient, 0f, compatibility) } }
         val window = remember(view) { view.context.findWindow() }
         DisposableEffect(immersive) {
@@ -519,6 +521,8 @@ fun WeatherScreen(onOpenSettings: () -> Unit = {}) {
                                     )
                                 }
                             }
+                            val showAmbientForecast = settings.isAmbientForecastEnabled() &&
+                                ambientForecastFits(rootHeightPx.intValue, ambientClockPx.intValue, ambientForecastPx.intValue)
                             Column(
                                 Modifier
                                     .align(Alignment.TopCenter)
@@ -541,13 +545,17 @@ fun WeatherScreen(onOpenSettings: () -> Unit = {}) {
                                     ambient.floatValue,
                                     Modifier
                                         .padding(horizontal = SIDE_PADDING)
-                                        .ambientCenter(ambient.floatValue, (rootHeightPx.intValue - ambientInset * 2).coerceAtLeast(0)),
+                                        .ambientCenter(
+                                            ambient.floatValue,
+                                            (rootHeightPx.intValue - ambientInset * 2).coerceAtLeast(0),
+                                            ambientAvailable(rootHeightPx.intValue, ambientClockPx.intValue, if (showAmbientForecast) ambientForecastPx.intValue else 0),
+                                        ),
                                 )
                             }
                             if (ambient.floatValue > 0f) {
-                                AmbientClock({ ambient.floatValue }, palette, Modifier.align(Alignment.TopCenter))
-                                if (settings.isAmbientForecastEnabled()) {
-                                    AmbientForecast({ ambient.floatValue }, snapshot, units.temperature, palette, Modifier.align(Alignment.BottomCenter))
+                                AmbientClock({ ambient.floatValue }, palette, Modifier.align(Alignment.TopCenter).onSizeChanged { ambientClockPx.intValue = it.height })
+                                if (showAmbientForecast) {
+                                    AmbientForecast({ ambient.floatValue }, snapshot, units.temperature, palette, Modifier.align(Alignment.BottomCenter).onSizeChanged { ambientForecastPx.intValue = it.height })
                                 }
                             }
                         }
@@ -1262,11 +1270,24 @@ private tailrec fun Context.findWindow(): Window? = when (this) {
 private const val AMBIENT_RANGE_DP = 260
 private const val AMBIENT_SETTLE_VELOCITY = 1200f
 
-internal fun Modifier.ambientCenter(fraction: Float, fullHeightPx: Int): Modifier = layout { measurable, constraints ->
+internal fun ambientAvailable(rootPx: Int, clockPx: Int, forecastPx: Int): Int =
+    if (rootPx <= 0 || clockPx <= 0) 0 else (rootPx - 2 * maxOf(clockPx, forecastPx)).coerceAtLeast(1)
+
+// The forecast is dropped when it would leave the temperature less than a third of the screen.
+internal fun ambientForecastFits(rootPx: Int, clockPx: Int, forecastPx: Int): Boolean =
+    rootPx <= 0 || ambientAvailable(rootPx, clockPx, forecastPx) >= rootPx / 3
+
+// Centres the header in the ambient band and scales it down whenever it is taller than the room between the clock and the forecast.
+internal fun Modifier.ambientCenter(fraction: Float, fullHeightPx: Int, availablePx: Int = 0): Modifier = layout { measurable, constraints ->
     val placeable = measurable.measure(constraints)
     val height = lerp(placeable.height.toFloat(), maxOf(fullHeightPx, placeable.height).toFloat(), fraction).roundToInt()
+    val fit = if (availablePx > 0 && placeable.height > availablePx) availablePx.toFloat() / placeable.height else 1f
+    val scale = lerp(1f, fit, fraction)
     layout(placeable.width, height) {
-        placeable.placeRelative(0, ((height - placeable.height) / 2f * fraction).roundToInt())
+        placeable.placeRelativeWithLayer(0, ((height - placeable.height) / 2f * fraction).roundToInt()) {
+            scaleX = scale
+            scaleY = scale
+        }
     }
 }
 

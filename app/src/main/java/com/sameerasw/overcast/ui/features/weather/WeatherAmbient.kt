@@ -25,6 +25,8 @@ import androidx.compose.runtime.getValue
 import androidx.compose.runtime.produceState
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.mutableStateMapOf
+import androidx.compose.runtime.mutableIntStateOf
+import androidx.compose.ui.layout.onSizeChanged
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.geometry.Offset
@@ -144,6 +146,8 @@ internal fun AmbientWeatherScene(
     val minute by rememberMinuteClock()
     // A slow drift keeps static text from sitting on the same pixels for hours.
     val steps = Calendar.getInstance().apply { timeInMillis = minute }.get(Calendar.MINUTE) / 5
+    val clockPx = remember { mutableIntStateOf(0) }
+    val forecastPx = remember { mutableIntStateOf(0) }
     val rainSurfaces = remember { mutableStateMapOf<String, RainSurfaceSource>() }
     val cards = { rainSurfaces.entries.mapNotNull { (key, source) -> source.resolve(key) } }
     val animate = animateIntro && !CompatibilityMode.enabled.value
@@ -170,6 +174,8 @@ internal fun AmbientWeatherScene(
                 )
             }
             if (snapshot != null) {
+                val maxHeightPx = this@BoxWithConstraints.constraints.maxHeight
+                val forecastShown = showForecast && ambientForecastFits(maxHeightPx, clockPx.intValue, forecastPx.intValue)
                 Box(Modifier.fillMaxSize().offset(x = ((steps % 5) - 2).dp * 3, y = (((steps / 5) % 3) - 1).dp * 3)) {
                     Header(
                         snapshot,
@@ -179,21 +185,21 @@ internal fun AmbientWeatherScene(
                         1f,
                         Modifier
                             .padding(horizontal = SIDE_PADDING)
-                            .ambientCenter(1f, this@BoxWithConstraints.constraints.maxHeight)
+                            .ambientCenter(1f, maxHeightPx, ambientAvailable(maxHeightPx, clockPx.intValue, if (forecastShown) forecastPx.intValue else 0))
                             .graphicsLayer {
                                 val reveal = stage(0.15f, 0.65f)
                                 alpha = reveal
                                 translationY = (1f - reveal) * 48.dp.toPx()
                             },
                     )
-                    AmbientClock({ 0.4f + 0.6f * stage(0.3f, 0.75f) }, presentation.palette, Modifier.align(Alignment.TopCenter))
-                    if (showForecast) {
+                    AmbientClock({ 0.4f + 0.6f * stage(0.3f, 0.75f) }, presentation.palette, Modifier.align(Alignment.TopCenter).onSizeChanged { clockPx.intValue = it.height })
+                    if (forecastShown) {
                         AmbientForecast(
                             { 0.4f + 0.6f * stage(0.45f, 0.95f) },
                             snapshot,
                             presentation.units.temperature,
                             presentation.palette,
-                            Modifier.align(Alignment.BottomCenter),
+                            Modifier.align(Alignment.BottomCenter).onSizeChanged { forecastPx.intValue = it.height },
                         )
                     }
                 }
