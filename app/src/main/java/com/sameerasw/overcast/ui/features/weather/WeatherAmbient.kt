@@ -6,8 +6,8 @@ import androidx.compose.animation.core.tween
 import androidx.compose.animation.core.LinearEasing
 import androidx.compose.animation.core.FastOutSlowInEasing
 import androidx.compose.animation.core.Animatable
+import androidx.compose.animation.core.animate
 import androidx.compose.ui.input.pointer.pointerInput
-import androidx.compose.foundation.gestures.detectVerticalDragGestures
 import androidx.compose.foundation.gestures.detectTapGestures
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.BoxScope
@@ -25,6 +25,8 @@ import androidx.compose.runtime.getValue
 import androidx.compose.runtime.produceState
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.mutableStateMapOf
+import androidx.compose.runtime.mutableIntStateOf
+import androidx.compose.ui.layout.onSizeChanged
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.geometry.Offset
@@ -40,6 +42,16 @@ import com.sameerasw.overcast.weather.effects.WeatherEffectSpec
 import com.sameerasw.overcast.weather.effects.WeatherEffects
 import com.sameerasw.overcast.weather.model.WeatherSnapshot
 import kotlinx.coroutines.delay
+import androidx.compose.runtime.SideEffect
+import androidx.compose.runtime.rememberCoroutineScope
+import androidx.compose.ui.platform.LocalView
+import androidx.compose.ui.platform.LocalConfiguration
+import androidx.compose.runtime.derivedStateOf
+import androidx.compose.runtime.snapshotFlow
+import kotlinx.coroutines.flow.drop
+import com.sameerasw.overcast.utils.HapticUtil
+import kotlin.math.roundToInt
+import androidx.compose.runtime.setValue
 import java.util.Calendar
 
 internal val AMBIENT_EDGE_GAP = 16.dp
@@ -49,7 +61,7 @@ internal const val AMBIENT_SURFACE_PREFIX = "ambient-hourly"
 @Composable
 internal fun BoxScope.WeatherSkyBackground(
     snapshot: WeatherSnapshot?,
-    now: Long,
+    now: () -> Long,
     palette: WeatherPalette,
     collapse: () -> Float,
     rise: () -> Float = { 1f },
@@ -74,7 +86,7 @@ internal fun BoxScope.WeatherSkyBackground(
 internal fun Modifier.weatherGlass(
     spec: WeatherEffectSpec,
     snapshot: WeatherSnapshot?,
-    now: Long,
+    now: () -> Long,
     collapse: () -> Float,
     intensityScale: Float = 1f,
     enabled: Boolean = true,
@@ -82,11 +94,11 @@ internal fun Modifier.weatherGlass(
 ): Modifier {
     val density = LocalDensity.current
     val rain = spec.layers.filterIsInstance<WeatherEffectLayer.Rain>().maxByOrNull { it.intensity }.takeIf { enabled }
-    val sky = snapshot?.let { skyState(it, now) }
     val skyHeightPx = with(density) { SKY_HEIGHT.toPx() }
     val collapseShiftPx = with(density) { 60.dp.toPx() }
     val fallbackYPx = with(density) { 150.dp.toPx() }
     return rainOnGlass((rain?.intensity ?: 0f) * intensityScale, rain?.slant ?: 0f) {
+        val sky = snapshot?.let { skyState(it, now()) }
         if (sky == null) {
             Offset(0.5f, fallbackYPx - collapse() * collapseShiftPx)
         } else {
@@ -138,14 +150,31 @@ internal fun AmbientWeatherScene(
     modifier: Modifier = Modifier,
     onDismiss: (() -> Unit)? = null,
     animateIntro: Boolean = false,
+    autoAnimate: Boolean = false,
 ) {
     val snapshot = presentation.snapshot
     val spec = presentation.effectSpec
     val minute by rememberMinuteClock()
     // A slow drift keeps static text from sitting on the same pixels for hours.
     val steps = Calendar.getInstance().apply { timeInMillis = minute }.get(Calendar.MINUTE) / 5
+    val clockPx = remember { mutableIntStateOf(0) }
+    val forecastPx = remember { mutableIntStateOf(0) }
     val rainSurfaces = remember { mutableStateMapOf<String, RainSurfaceSource>() }
     val cards = { rainSurfaces.entries.mapNotNull { (key, source) -> source.resolve(key) } }
+    val timeline = presentation.timeline
+    val scope = rememberCoroutineScope()
+    val stepPx = with(LocalDensity.current) { LocalConfiguration.current.screenWidthDp.dp.toPx() } / TIMELINE_STEPS_PER_SCREEN
+    val showReturn by remember(timeline) { derivedStateOf { (timeline?.value ?: 0f) > 0.05f } }
+    SideEffect { timeline?.loop = autoAnimate }
+    LaunchedEffect(timeline, autoAnimate) {
+        if (timeline == null || !autoAnimate) return@LaunchedEffect
+        while (true) {
+            delay(TIMELINE_IDLE_MS)
+            val end = timeline.maxPosition
+            animate(0f, end, animationSpec = tween((end * TIMELINE_STEP_MS).toInt(), easing = LinearEasing)) { v, _ -> timeline.set(v) }
+            timeline.set(0f)
+        }
+    }
     val animate = animateIntro && !CompatibilityMode.enabled.value
     val intro = remember { Animatable(if (animate) 0f else 1f) }
     LaunchedEffect(animate) {
@@ -156,20 +185,21 @@ internal fun AmbientWeatherScene(
     CompositionLocalProvider(LocalWeatherIconStyle provides presentation.iconStyle, LocalRainSurfaces provides rainSurfaces) {
         BoxWithConstraints(
             modifier.fillMaxSize()
-                .weatherGlass(spec, snapshot, presentation.now, { 0f }, rise = riseStage)
-                .dismissOnTouch(onDismiss),
+                .weatherGlass(spec, snapshot, presentation.clock, { 0f }, rise = riseStage)
+                .dismissOnTouch(onDismiss)
+                .then(if (timeline != null && !autoAnimate) Modifier.timelineGestures(timeline, scope, stepPx, onVerticalDrag = {}, onVerticalEnd = {}) else Modifier),
         ) {
-            WeatherSkyBackground(snapshot, presentation.now, presentation.palette, { 0f }, riseStage)
-            if (!spec.isEmpty) {
-                WeatherEffects(
-                    spec = spec,
-                    modifier = Modifier.matchParentSize(),
-                    strength = 1.7f * stage(0.1f, 0.6f),
-                    surfaces = cards,
-                    cover = cards,
-                )
-            }
+            WeatherSkyBackground(snapshot, presentation.clock, presentation.palette, { 0f }, riseStage)
+            WeatherEffects(
+                spec = spec,
+                modifier = Modifier.matchParentSize(),
+                strength = 1.7f * stage(0.1f, 0.6f),
+                surfaces = cards,
+                cover = cards,
+            )
             if (snapshot != null) {
+                val maxHeightPx = this@BoxWithConstraints.constraints.maxHeight
+                val forecastShown = showForecast && timeline == null && ambientForecastFits(maxHeightPx, clockPx.intValue, forecastPx.intValue)
                 Box(Modifier.fillMaxSize().offset(x = ((steps % 5) - 2).dp * 3, y = (((steps / 5) % 3) - 1).dp * 3)) {
                     Header(
                         snapshot,
@@ -179,21 +209,37 @@ internal fun AmbientWeatherScene(
                         1f,
                         Modifier
                             .padding(horizontal = SIDE_PADDING)
-                            .ambientCenter(1f, this@BoxWithConstraints.constraints.maxHeight)
+                            .ambientCenter(1f, maxHeightPx, rememberAnimatedAvailable(ambientAvailable(maxHeightPx, clockPx.intValue, if (forecastShown || timeline != null) forecastPx.intValue else 0)))
                             .graphicsLayer {
                                 val reveal = stage(0.15f, 0.65f)
                                 alpha = reveal
                                 translationY = (1f - reveal) * 48.dp.toPx()
                             },
                     )
-                    AmbientClock({ 0.4f + 0.6f * stage(0.3f, 0.75f) }, presentation.palette, Modifier.align(Alignment.TopCenter))
-                    if (showForecast) {
+                    AmbientClock(
+                        { 0.4f + 0.6f * stage(0.3f, 0.75f) },
+                        presentation.palette,
+                        Modifier.align(Alignment.TopCenter).onSizeChanged { clockPx.intValue = it.height },
+                        timeMillis = presentation.clockLabel.takeIf { timeline != null },
+                        showReturn = showReturn && !autoAnimate,
+                        atNow = presentation.timelineAtNow,
+                        onReturn = { timeline?.animateTo(scope, 0f) },
+                    )
+                    if (timeline != null) {
+                        TimelineRain(
+                            { 0.4f + 0.6f * stage(0.45f, 0.95f) },
+                            snapshot.chanceOfRain,
+                            presentation.palette,
+                            Modifier.align(Alignment.BottomCenter).onSizeChanged { forecastPx.intValue = it.height },
+                        )
+                    }
+                    if (forecastShown) {
                         AmbientForecast(
                             { 0.4f + 0.6f * stage(0.45f, 0.95f) },
                             snapshot,
                             presentation.units.temperature,
                             presentation.palette,
-                            Modifier.align(Alignment.BottomCenter),
+                            Modifier.align(Alignment.BottomCenter).onSizeChanged { forecastPx.intValue = it.height },
                         )
                     }
                 }
@@ -203,12 +249,13 @@ internal fun AmbientWeatherScene(
 }
 
 private const val AMBIENT_INTRO_MS = 2600
+private const val TIMELINE_STEPS_PER_SCREEN = 4f
+private const val TIMELINE_IDLE_MS = 14_000L
+private const val TIMELINE_STEP_MS = 900
 
 private fun Modifier.dismissOnTouch(onDismiss: (() -> Unit)?): Modifier =
     if (onDismiss == null) {
         this
     } else {
-        this
-            .pointerInput(onDismiss) { detectTapGestures(onTap = { onDismiss() }) }
-            .pointerInput(onDismiss) { detectVerticalDragGestures { _, _ -> onDismiss() } }
+        this.pointerInput(onDismiss) { detectTapGestures(onTap = { onDismiss() }) }
     }

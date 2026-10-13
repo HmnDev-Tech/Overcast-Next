@@ -16,7 +16,11 @@ internal object ProviderHttp {
 
     fun encode(value: String): String = URLEncoder.encode(value, "UTF-8")
 
-    suspend fun get(url: String, headers: Map<String, String> = emptyMap()): String = withContext(Dispatchers.IO) {
+    suspend fun get(url: String, headers: Map<String, String> = emptyMap()): String = request(url, headers, null)
+
+    suspend fun post(url: String, body: String, headers: Map<String, String> = emptyMap()): String = request(url, headers, body)
+
+    private suspend fun request(url: String, headers: Map<String, String>, body: String?): String = withContext(Dispatchers.IO) {
         val connection = try {
             URL(url).openConnection() as HttpURLConnection
         } catch (e: IOException) {
@@ -27,6 +31,12 @@ internal object ProviderHttp {
             connection.readTimeout = TIMEOUT_MS
             connection.setRequestProperty("User-Agent", USER_AGENT)
             headers.forEach { (k, v) -> connection.setRequestProperty(k, v) }
+            if (body != null) {
+                connection.requestMethod = "POST"
+                connection.doOutput = true
+                connection.setRequestProperty("Content-Type", "application/json")
+                connection.outputStream.use { it.write(body.toByteArray(Charsets.UTF_8)) }
+            }
             val code = connection.responseCode
             if (code == HttpURLConnection.HTTP_UNAUTHORIZED || code == HttpURLConnection.HTTP_FORBIDDEN) {
                 throw WeatherProviderException(WeatherProviderException.Reason.INVALID_KEY)

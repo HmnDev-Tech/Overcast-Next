@@ -25,11 +25,9 @@ import com.sameerasw.overcast.R
 import java.text.SimpleDateFormat
 import java.util.Date
 import java.util.Locale
-import kotlin.math.abs
 
 private const val MIN_ITEM_DP = 52f
 private const val MAX_ITEMS = 14
-private const val HOUR_MS = 60 * 60_000L
 
 // One column of a forecast row: a label, an icon, a temperature and optionally a muted second temperature.
 internal class ForecastItem(val label: String, val icon: Int, val primary: String, val secondary: String? = null)
@@ -38,12 +36,11 @@ internal fun hourlyItems(context: Context, weather: WidgetWeather): List<Forecas
     val now = System.currentTimeMillis()
     val pattern = if (DateFormat.is24HourFormat(context)) "HH:mm" else "ha"
     val format = SimpleDateFormat(pattern, Locale.getDefault())
-    return weather.snapshot?.hourly.orEmpty()
-        .filter { it.timeMillis > now - HOUR_MS }
+    return weather.snapshot?.upcomingHours(now).orEmpty()
         .take(MAX_ITEMS)
         .map {
             ForecastItem(
-                label = if (abs(it.timeMillis - now) < HOUR_MS * 3 / 4) {
+                label = if (it.timeMillis <= now) {
                     context.getString(R.string.widget_hourly_now)
                 } else {
                     format.format(Date(it.timeMillis)).lowercase(Locale.getDefault())
@@ -56,7 +53,7 @@ internal fun hourlyItems(context: Context, weather: WidgetWeather): List<Forecas
 
 internal fun dailyItems(context: Context, weather: WidgetWeather): List<ForecastItem> {
     val format = SimpleDateFormat("EEE", Locale.getDefault())
-    return weather.snapshot?.daily.orEmpty().take(MAX_ITEMS).mapIndexed { index, day ->
+    return weather.snapshot?.upcomingDays().orEmpty().take(MAX_ITEMS).mapIndexed { index, day ->
         ForecastItem(
             label = if (index == 0) context.getString(R.string.weather_detail_today) else format.format(Date(day.dayMillis)),
             icon = weather.style.icon(day.condition, true),

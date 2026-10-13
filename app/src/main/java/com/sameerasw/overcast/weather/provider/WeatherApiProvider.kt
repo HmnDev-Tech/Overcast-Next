@@ -1,5 +1,6 @@
 package com.sameerasw.overcast.weather.provider
 
+import com.sameerasw.overcast.weather.MoonPhase
 import com.sameerasw.overcast.weather.model.AlertSeverity
 import com.sameerasw.overcast.weather.model.CityResult
 import com.sameerasw.overcast.weather.model.DailyForecast
@@ -152,6 +153,7 @@ class WeatherApiProvider : WeatherProvider {
                 windGustKph = current.optDouble("gust_kph").takeUnless { it.isNaN() },
                 windDirectionDeg = current.optDouble("wind_degree").takeUnless { it.isNaN() },
                 precipitationMm = current.optDouble("precip_mm").takeUnless { it.isNaN() },
+                moonPhase = days.getJSONObject(0).optJSONObject("astro")?.let { moonPhaseFrom(it) },
             ),
             daily = (0 until days.length()).map { i ->
                 val d = days.getJSONObject(i)
@@ -165,6 +167,13 @@ class WeatherApiProvider : WeatherProvider {
                 )
             },
         )
+    }
+
+    private fun moonPhaseFrom(astro: JSONObject): Double? {
+        val illumination = astro.optString("moon_illumination").toDoubleOrNull() ?: return null
+        val name = astro.optString("moon_phase").lowercase()
+        if (name.isBlank()) return null
+        return MoonPhase.fromIllumination(illumination, waxing = !name.contains("waning") && !name.contains("last"))
     }
 
     private fun parseTime(value: String?): Long? {

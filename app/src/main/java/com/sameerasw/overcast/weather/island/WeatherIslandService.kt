@@ -90,7 +90,7 @@ class WeatherIslandService : ComposeIslandProviderService() {
     }
 
     private suspend fun announceAlerts(host: IslandHostHandle, snapshot: WeatherSnapshot?) {
-        if (snapshot == null || !settings.isIslandPeekAlertsEnabled()) return
+        if (snapshot == null) return
         val severe = snapshot.activeAlerts().filter { it.severity.isSevere }
         if (severe.isEmpty()) return
         val fresh = WeatherRepository.takeUnnotifiedAlerts(applicationContext, severe.map { it.id })

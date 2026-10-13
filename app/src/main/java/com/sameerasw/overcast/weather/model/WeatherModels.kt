@@ -82,6 +82,7 @@ data class WeatherExtras(
     val precipitationMm: Double? = null,
     val sunriseMillis: Long? = null,
     val sunsetMillis: Long? = null,
+    val moonPhase: Double? = null,
 )
 
 @Keep
@@ -106,9 +107,9 @@ data class WeatherSnapshot(
     val condition: WeatherCondition,
     val conditionText: String,
     val isDay: Boolean,
-    val humidity: Int,
+    val humidity: Int?,
     val windKph: Double,
-    val chanceOfRain: Int,
+    val chanceOfRain: Int?,
     val highC: Double,
     val lowC: Double,
     val hourly: List<HourlyForecast>,
@@ -119,6 +120,17 @@ data class WeatherSnapshot(
     val daily: List<DailyForecast>? = null,
 ) {
     fun activeAlerts(now: Long = System.currentTimeMillis()): List<WeatherAlert> = alerts.filter { it.isActive(now) }
+
+    fun upcomingHours(now: Long = System.currentTimeMillis()): List<HourlyForecast> = hourly.filter { it.timeMillis + HOUR_MS > now }
+
+    fun todayHighC(now: Long = System.currentTimeMillis()): Double = todayEntry(now)?.highC ?: highC
+
+    fun todayLowC(now: Long = System.currentTimeMillis()): Double = todayEntry(now)?.lowC ?: lowC
+
+    private fun todayEntry(now: Long): DailyForecast? =
+        upcomingDays(now).firstOrNull()?.takeIf { it.dayMillis <= now && updatedAt < it.dayMillis }
+
+    fun upcomingDays(now: Long = System.currentTimeMillis()): List<DailyForecast> = daily.orEmpty().filter { it.dayMillis + DAY_MS > now }
 }
 
 sealed interface WeatherError {
@@ -136,3 +148,6 @@ data class WeatherState(
     val loading: Boolean = false,
     val error: WeatherError? = null,
 )
+
+private const val HOUR_MS = 60 * 60_000L
+private const val DAY_MS = 24 * HOUR_MS

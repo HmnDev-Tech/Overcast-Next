@@ -44,7 +44,7 @@ class OpenMeteoProvider : WeatherProvider {
             "&current=temperature_2m,relative_humidity_2m,apparent_temperature,is_day,weather_code,wind_speed_10m," +
             "surface_pressure,wind_gusts_10m,wind_direction_10m,cloud_cover,precipitation,dew_point_2m" +
             "&hourly=temperature_2m,precipitation_probability,weather_code,is_day,visibility" +
-            "&daily=temperature_2m_max,temperature_2m_min,precipitation_probability_max,weather_code,uv_index_max,sunrise,sunset" +
+            "&daily=temperature_2m_max,temperature_2m_min,precipitation_probability_max,weather_code,uv_index_max,sunrise,sunset,moon_phase" +
             "&forecast_days=7&timezone=auto&wind_speed_unit=kmh&timeformat=unixtime" +
             (OpenMeteoModels.selected()?.let { "&models=$it" } ?: "")
         val json = JSONObject(ProviderHttp.get(url))
@@ -132,6 +132,7 @@ class OpenMeteoProvider : WeatherProvider {
                 precipitationMm = optNumber("precipitation"),
                 sunriseMillis = daily.optJSONArray("sunrise")?.takeIf { !it.isNull(0) }?.getLong(0)?.times(1000L),
                 sunsetMillis = daily.optJSONArray("sunset")?.takeIf { !it.isNull(0) }?.getLong(0)?.times(1000L),
+                moonPhase = daily.optJSONArray("moon_phase")?.takeIf { !it.isNull(0) }?.getDouble(0),
             ),
             daily = dailyList,
         )

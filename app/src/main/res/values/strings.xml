@@ -16,6 +16,32 @@
     <string name="weather_detail_rain_chance">Chance of rain</string>
     <string name="weather_detail_sunrise">Sunrise</string>
     <string name="weather_detail_sunset">Sunset</string>
+    <string name="weather_detail_moon">Moon</string>
+    <string name="timeline_mode">Timeline mode</string>
+    <string name="screensaver_auto_animate">Auto scrub screensaver</string>
+    <string name="timeline_now">Now</string>
+    <string name="timeline_tomorrow">Tomorrow</string>
+    <string name="timeline_back_to_now">Back to now</string>
+    <string name="condition_clear">Clear</string>
+    <string name="condition_partly_cloudy">Partly cloudy</string>
+    <string name="condition_cloudy">Cloudy</string>
+    <string name="condition_fog">Fog</string>
+    <string name="condition_drizzle">Drizzle</string>
+    <string name="condition_rain">Rain</string>
+    <string name="condition_heavy_rain">Heavy rain</string>
+    <string name="condition_sleet">Sleet</string>
+    <string name="condition_snow">Snow</string>
+    <string name="condition_hail">Hail</string>
+    <string name="condition_thunderstorm">Thunderstorm</string>
+    <string name="condition_unknown">Unknown</string>
+    <string name="moon_new">New moon</string>
+    <string name="moon_waxing_crescent">Waxing crescent</string>
+    <string name="moon_first_quarter">First quarter</string>
+    <string name="moon_waxing_gibbous">Waxing gibbous</string>
+    <string name="moon_full">Full moon</string>
+    <string name="moon_waning_gibbous">Waning gibbous</string>
+    <string name="moon_last_quarter">Last quarter</string>
+    <string name="moon_waning_crescent">Waning crescent</string>
     <string name="weather_detail_today">Today</string>
     <string name="weather_detail_uv">UV index</string>
     <string name="weather_detail_visibility">Visibility</string>
@@ -43,12 +69,6 @@
     <string name="weather_search_city">Search for a city</string>
     <string name="weather_search_no_results">No cities found</string>
     <string name="weather_section_display">Display</string>
-    <string name="weather_section_island">Dynamic island</string>
-    <string name="island_mode_title">Show on island</string>
-    <string name="island_mode_brief">Brief only</string>
-    <string name="island_mode_compact">Always</string>
-    <string name="island_mode_alerts">Alerts only</string>
-    <string name="island_peek_alerts_title">Peek for alerts</string>
     <string name="island_provider_label">Weather</string>
     <string name="island_provider_description">Overcast wants to show live weather, alerts and forecasts on your island.</string>
     <string name="weather_section_screensaver">Screensaver</string>
@@ -153,4 +173,6 @@
     <string name="onboarding_finish">Finish</string>
     <string name="dev_reset_welcome_title">Reset welcome</string>
     <string name="dev_reset_welcome_done">Welcome will show again on next launch</string>
+    <!-- Required by the Yandex Weather terms (point 2.4); keep the wording. -->
+    <string name="weather_attribution_yandex">The data is provided by the Yandex Weather service.</string>
 </resources>

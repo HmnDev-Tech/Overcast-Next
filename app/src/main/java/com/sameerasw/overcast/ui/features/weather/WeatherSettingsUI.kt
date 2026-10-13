@@ -52,8 +52,6 @@ import androidx.compose.ui.text.input.KeyboardType
 import androidx.compose.ui.text.input.PasswordVisualTransformation
 import androidx.compose.ui.text.input.VisualTransformation
 import androidx.compose.ui.unit.dp
-import com.sameerasw.island.sdk.HostGrantStore
-import com.sameerasw.island.sdk.IslandIdentity
 import com.sameerasw.overcast.R
 import com.sameerasw.overcast.data.repository.SettingsRepository
 import com.sameerasw.overcast.ui.components.menus.SegmentedDropdownMenuItem
@@ -73,6 +71,7 @@ import com.sameerasw.overcast.weather.WindSpeedUnit
 import com.sameerasw.overcast.weather.model.WeatherError
 import com.sameerasw.overcast.weather.provider.OpenMeteoModels
 import com.sameerasw.overcast.weather.provider.WeatherProviders
+import com.sameerasw.overcast.weather.work.WeatherScheduler
 import kotlinx.coroutines.launch
 
 
@@ -93,14 +92,12 @@ fun WeatherSettingsUI(
 
     var compatibility by remember { mutableStateOf(settings.isCompatibilityMode()) }
     var ambientForecast by remember { mutableStateOf(settings.isAmbientForecastEnabled()) }
+    var ambientTimeline by remember { mutableStateOf(settings.isAmbientTimelineEnabled()) }
+    var screensaverAutoAnimate by remember { mutableStateOf(settings.isScreensaverAutoAnimateEnabled()) }
     var unitsExpanded by remember { mutableStateOf(false) }
     var showCompatibilityInfo by remember { mutableStateOf(false) }
     var effects by remember { mutableStateOf(settings.isWeatherEffectsEnabled()) }
     var weatherHaptics by remember { mutableStateOf(settings.isWeatherHapticsEnabled()) }
-    var islandMode by remember { mutableStateOf(settings.getIslandMode()) }
-    var islandPeekAlerts by remember { mutableStateOf(settings.isIslandPeekAlertsEnabled()) }
-    val hostGrants = remember { HostGrantStore(context) }
-    var grantedHosts by remember { mutableStateOf(hostGrants.granted().keys.toList()) }
     var refreshMinutes by remember { mutableIntStateOf(settings.getWeatherRefreshMinutes()) }
     var savedKey by remember { mutableStateOf(settings.getWeatherApiKey(providerId).orEmpty()) }
     var keyInput by remember { mutableStateOf(savedKey) }
@@ -130,6 +127,7 @@ fun WeatherSettingsUI(
                             onClick = {
                                 if (option.id != providerId) {
                                     settings.setWeatherProvider(option.id)
+                                    WeatherScheduler.schedule(context, settings.getWeatherRefreshMinutes())
                                     providerId = option.id
                                     savedKey = settings.getWeatherApiKey(option.id).orEmpty()
                                     keyInput = savedKey
@@ -245,6 +243,7 @@ fun WeatherSettingsUI(
                             onClick = {
                                 refreshMinutes = minutes
                                 settings.setWeatherRefreshMinutes(minutes)
+                                WeatherScheduler.schedule(context, minutes)
                             },
                         )
                     }
@@ -391,53 +390,6 @@ fun WeatherSettingsUI(
                 )
             }
 
-            SectionTitle(R.string.weather_section_island)
-            RoundedCardContainer(spacing = 2.dp, cornerRadius = 24.dp) {
-                val modes = listOf(
-                    SettingsRepository.ISLAND_MODE_BRIEF to R.string.island_mode_brief,
-                    SettingsRepository.ISLAND_MODE_COMPACT to R.string.island_mode_compact,
-                    SettingsRepository.ISLAND_MODE_ALERTS to R.string.island_mode_alerts,
-                )
-                ConfigPickerItem(
-                    title = stringResource(R.string.island_mode_title),
-                    selectedValue = stringResource(modes.first { it.first == islandMode }.second),
-                    iconRes = R.drawable.rounded_dashboard_24,
-                    modifier = Modifier.fillMaxWidth(),
-                ) {
-                    modes.forEach { (id, label) ->
-                        SegmentedDropdownMenuItem(
-                            text = { Text(stringResource(label)) },
-                            onClick = {
-                                islandMode = id
-                                settings.setIslandMode(id)
-                            },
-                        )
-                    }
-                }
-                grantedHosts.forEach { host ->
-                    IconToggleItem(
-                        iconRes = R.drawable.rounded_dashboard_24,
-                        title = IslandIdentity.label(context, host),
-                        isChecked = true,
-                        onCheckedChange = {
-                            HapticUtil.performVirtualKeyHaptic(view)
-                            hostGrants.revoke(host)
-                            grantedHosts = hostGrants.granted().keys.toList()
-                        },
-                    )
-                }
-                IconToggleItem(
-                    iconRes = R.drawable.rounded_warning_24,
-                    title = stringResource(R.string.island_peek_alerts_title),
-                    isChecked = islandPeekAlerts,
-                    onCheckedChange = {
-                        HapticUtil.performVirtualKeyHaptic(view)
-                        islandPeekAlerts = it
-                        settings.setIslandPeekAlertsEnabled(it)
-                    },
-                )
-            }
-
             SectionTitle(R.string.weather_section_screensaver)
             RoundedCardContainer(spacing = 2.dp, cornerRadius = 24.dp) {
                 IconToggleItem(
@@ -448,6 +400,26 @@ fun WeatherSettingsUI(
                         HapticUtil.performVirtualKeyHaptic(view)
                         ambientForecast = it
                         settings.setAmbientForecastEnabled(it)
+                    },
+                )
+                IconToggleItem(
+                    iconRes = R.drawable.rounded_schedule_24,
+                    title = stringResource(R.string.timeline_mode),
+                    isChecked = ambientTimeline,
+                    onCheckedChange = {
+                        HapticUtil.performVirtualKeyHaptic(view)
+                        ambientTimeline = it
+                        settings.setAmbientTimelineEnabled(it)
+                    },
+                )
+                IconToggleItem(
+                    iconRes = R.drawable.rounded_schedule_24,
+                    title = stringResource(R.string.screensaver_auto_animate),
+                    isChecked = screensaverAutoAnimate,
+                    onCheckedChange = {
+                        HapticUtil.performVirtualKeyHaptic(view)
+                        screensaverAutoAnimate = it
+                        settings.setScreensaverAutoAnimateEnabled(it)
                     },
                 )
             }

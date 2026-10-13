@@ -62,11 +62,6 @@ object WeatherIslandPayload {
             else -> IslandTone.NONE
         }
 
-        val compactVisible = when (settings.getIslandMode()) {
-            SettingsRepository.ISLAND_MODE_COMPACT -> true
-            SettingsRepository.ISLAND_MODE_ALERTS -> alert != null
-            else -> false
-        }
         val lineEnd = if (alert != null) {
             alert.expiresMillis?.let { context.getString(R.string.weather_alert_until, formatTime(context, it)) } ?: temperature
         } else {
@@ -78,7 +73,6 @@ object WeatherIslandPayload {
             priority = PRIORITY,
             priorityOverride = PRIORITY_ALERT.takeIf { alert != null },
             placement = IslandPlacement.DYNAMIC,
-            compactVisible = compactVisible,
             compact = listOf(
                 IslandCellPayload(key = "weather.icon", iconId = iconId, tone = tone),
                 IslandCellPayload(key = "weather.temp", text = temperature, tone = IslandTone.NONE),
@@ -96,7 +90,7 @@ object WeatherIslandPayload {
                 onExpandedTap = IslandAction(IslandActionType.OPEN_APP),
             ),
         )
-        val trailingId = if (alert != null) ICON_ALERT else RAIN_ICON.takeIf { snapshot.chanceOfRain > 0 }
+        val trailingId = if (alert != null) ICON_ALERT else RAIN_ICON.takeIf { (snapshot.chanceOfRain ?: 0) > 0 }
         if (alert == null && trailingId != null) {
             WeatherIslandIcons.bitmap(context, R.drawable.rounded_rainy_24)?.also { assets[RAIN_ICON] = it }
         }
@@ -107,7 +101,7 @@ object WeatherIslandPayload {
             iconId = iconId,
             tone = if (style.tintable) IslandTone.ACCENT else IslandTone.NONE,
             trailingIconId = trailingId,
-            trailingText = "${snapshot.chanceOfRain}%".takeIf { alert == null && trailingId != null },
+            trailingText = snapshot.chanceOfRain?.let { "$it%" }.takeIf { alert == null && trailingId != null },
             trailingTone = if (alert != null) IslandTone.ALERT else IslandTone.ACCENT,
             pageHeightDp = if (alert != null) HEIGHT_ALERT_DP else HEIGHT_DP,
         )

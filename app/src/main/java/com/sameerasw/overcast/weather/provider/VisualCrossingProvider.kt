@@ -115,6 +115,7 @@ class VisualCrossingProvider : WeatherProvider {
                 precipitationMm = current.optDouble("precip").takeUnless { it.isNaN() },
                 sunriseMillis = current.optLong("sunriseEpoch", 0L).takeIf { it > 0 }?.times(1000L),
                 sunsetMillis = current.optLong("sunsetEpoch", 0L).takeIf { it > 0 }?.times(1000L),
+                moonPhase = today.optDouble("moonphase").takeUnless { it.isNaN() },
             ),
             daily = (0 until days.length()).map { i ->
                 val d = days.getJSONObject(i)

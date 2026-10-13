@@ -60,7 +60,8 @@ import com.sameerasw.overcast.weather.effects.WeatherEffects
 import com.sameerasw.overcast.weather.model.WeatherAlert
 import com.sameerasw.overcast.weather.model.WeatherError
 import com.sameerasw.overcast.weather.model.WeatherSnapshot
-import com.sameerasw.overcast.weather.provider.WeatherProviders
+import com.sameerasw.overcast.ui.features.weather.RollingClock
+import com.sameerasw.overcast.ui.features.weather.providerLabel
 import kotlinx.coroutines.delay
 import java.text.SimpleDateFormat
 import java.util.Date
@@ -105,14 +106,12 @@ fun WeatherIslandExpanded(
             .background(Color.Black)
             .clickable(onClick = onOpenApp),
     ) {
-        if (!effectSpec.isEmpty) {
-            WeatherEffects(
-                spec = effectSpec,
-                modifier = Modifier.matchParentSize(),
-                clearTop = clearTop,
-                haptics = haptics,
-            )
-        }
+        WeatherEffects(
+            spec = effectSpec,
+            modifier = Modifier.matchParentSize(),
+            clearTop = clearTop,
+            haptics = haptics,
+        )
         Column(Modifier.fillMaxWidth()) {
             Spacer(Modifier.height((clearTop - compactHeight).coerceAtLeast(0.dp)))
             Row(
@@ -133,7 +132,7 @@ fun WeatherIslandExpanded(
                     overflow = TextOverflow.Ellipsis,
                     modifier = Modifier.weight(1f),
                 )
-                snapshot?.let { Text(WeatherFormat.temperature(it.tempC, units.temperature), style = title.copy(fontSize = 22.sp)) }
+                snapshot?.let { RollingClock(WeatherFormat.temperature(it.tempC, units.temperature), Color.Unspecified, null, title.copy(fontSize = 22.sp)) }
             }
             Spacer(Modifier.height(6.dp))
             Column(
@@ -151,9 +150,9 @@ fun WeatherIslandExpanded(
                     WeatherIslandPayload.severeAlert(snapshot)?.let { AlertCard(it) }
                     HourlyStrip(snapshot, units, iconStyle)
                     Row(horizontalArrangement = Arrangement.spacedBy(6.dp)) {
-                        DetailChip(R.drawable.rounded_water_drop_24, "${snapshot.humidity}%", Modifier.weight(1f))
+                        DetailChip(R.drawable.rounded_water_drop_24, snapshot.humidity?.let { "$it%" } ?: "–", Modifier.weight(1f))
                         DetailChip(R.drawable.rounded_air_24, WeatherFormat.wind(snapshot.windKph, units.wind), Modifier.weight(1f))
-                        DetailChip(R.drawable.rounded_rainy_24, "${snapshot.chanceOfRain}%", Modifier.weight(1f))
+                        DetailChip(R.drawable.rounded_rainy_24, snapshot.chanceOfRain?.let { "$it%" } ?: "–", Modifier.weight(1f))
                     }
                     UpdatedRow(snapshot, state.loading, state.error, onKeepAlive, onRefresh)
                 }
@@ -170,8 +169,8 @@ private fun Summary(snapshot: WeatherSnapshot, units: WeatherUnits) {
             snapshot.conditionText,
             stringResource(
                 R.string.weather_high_low,
-                WeatherFormat.temperature(snapshot.highC, units.temperature),
-                WeatherFormat.temperature(snapshot.lowC, units.temperature),
+                WeatherFormat.temperature(snapshot.todayHighC(), units.temperature),
+                WeatherFormat.temperature(snapshot.todayLowC(), units.temperature),
             ),
             stringResource(R.string.weather_feels_like, WeatherFormat.temperature(snapshot.feelsLikeC, units.temperature)),
         ).filter { it.isNotBlank() }.joinToString(" · "),
@@ -220,7 +219,7 @@ private fun AlertCard(alert: WeatherAlert) {
 @Composable
 private fun HourlyStrip(snapshot: WeatherSnapshot, units: WeatherUnits, iconStyle: WeatherIconStyle) {
     val context = LocalContext.current
-    val hours = snapshot.hourly.take(6)
+    val hours = snapshot.upcomingHours().take(6)
     if (hours.isEmpty()) return
     Row(
         modifier = Modifier
@@ -234,7 +233,7 @@ private fun HourlyStrip(snapshot: WeatherSnapshot, units: WeatherUnits, iconStyl
             Column(horizontalAlignment = Alignment.CenterHorizontally, verticalArrangement = Arrangement.spacedBy(4.dp)) {
                 Text(formatHour(context, hour.timeMillis), style = body.copy(fontSize = 11.sp))
                 WeatherIcon(hour.condition, hour.isDay, Color.White, Modifier.size(18.dp), iconStyle)
-                Text(WeatherFormat.temperature(hour.tempC, units.temperature), style = body.copy(color = Color.White))
+                RollingClock(WeatherFormat.temperature(hour.tempC, units.temperature), Color.Unspecified, null, body.copy(color = Color.White))
             }
         }
     }
@@ -252,7 +251,7 @@ private fun DetailChip(icon: Int, text: String, modifier: Modifier = Modifier) {
     ) {
         Icon(painterResource(icon), null, tint = MaterialTheme.colorScheme.primary, modifier = Modifier.size(16.dp))
         Spacer(Modifier.width(6.dp))
-        Text(text, style = body.copy(color = Color.White, fontSize = 12.sp), maxLines = 1)
+        RollingClock(text, Color.Unspecified, null, body.copy(color = Color.White, fontSize = 12.sp))
     }
 }
 
@@ -280,7 +279,7 @@ private fun UpdatedRow(
     ).toString()
     Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically) {
         Text(
-            text = if (error != null) errorText(error) else "${WeatherProviders.byId(snapshot.providerId).displayName} - $age",
+            text = if (error != null) errorText(error) else "${providerLabel(snapshot.providerId)} - $age",
             style = body.copy(fontSize = 11.sp),
             maxLines = 1,
             overflow = TextOverflow.Ellipsis,
