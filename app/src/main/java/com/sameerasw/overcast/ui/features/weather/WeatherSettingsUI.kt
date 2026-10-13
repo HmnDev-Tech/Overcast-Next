@@ -92,6 +92,7 @@ fun WeatherSettingsUI(
 
     var compatibility by remember { mutableStateOf(settings.isCompatibilityMode()) }
     var ambientForecast by remember { mutableStateOf(settings.isAmbientForecastEnabled()) }
+    var ambientTimeline by remember { mutableStateOf(settings.isAmbientTimelineEnabled()) }
     var unitsExpanded by remember { mutableStateOf(false) }
     var showCompatibilityInfo by remember { mutableStateOf(false) }
     var effects by remember { mutableStateOf(settings.isWeatherEffectsEnabled()) }
@@ -398,6 +399,16 @@ fun WeatherSettingsUI(
                         HapticUtil.performVirtualKeyHaptic(view)
                         ambientForecast = it
                         settings.setAmbientForecastEnabled(it)
+                    },
+                )
+                IconToggleItem(
+                    iconRes = R.drawable.rounded_schedule_24,
+                    title = stringResource(R.string.timeline_mode),
+                    isChecked = ambientTimeline,
+                    onCheckedChange = {
+                        HapticUtil.performVirtualKeyHaptic(view)
+                        ambientTimeline = it
+                        settings.setAmbientTimelineEnabled(it)
                     },
                 )
             }

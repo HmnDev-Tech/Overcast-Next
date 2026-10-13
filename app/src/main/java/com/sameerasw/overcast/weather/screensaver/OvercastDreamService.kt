@@ -21,6 +21,7 @@ import androidx.savedstate.SavedStateRegistryOwner
 import androidx.savedstate.setViewTreeSavedStateRegistryOwner
 import com.sameerasw.overcast.data.repository.SettingsRepository
 import com.sameerasw.overcast.ui.features.weather.AmbientWeatherScene
+import com.sameerasw.overcast.ui.features.weather.WeatherTimeline
 import com.sameerasw.overcast.ui.features.weather.rememberWeatherPresentation
 import com.sameerasw.overcast.ui.theme.OvercastTheme
 import com.sameerasw.overcast.weather.WeatherRepository
@@ -80,5 +81,6 @@ private fun DreamContent(onDismiss: () -> Unit) {
         WeatherRepository.ensureLoaded(context)
         if (WeatherRepository.isStale(context)) WeatherRepository.refresh(context)
     }
-    AmbientWeatherScene(rememberWeatherPresentation(state.snapshot), settings.isAmbientForecastEnabled(), onDismiss = onDismiss, animateIntro = true)
+    val timeline = remember { WeatherTimeline() }
+    AmbientWeatherScene(rememberWeatherPresentation(state.snapshot, timeline), settings.isAmbientForecastEnabled(), onDismiss = onDismiss, animateIntro = true)
 }

@@ -87,6 +87,7 @@ import androidx.compose.material3.SplitButtonDefaults
 import androidx.compose.material3.darkColorScheme
 import androidx.compose.runtime.Composable
 import androidx.compose.foundation.layout.statusBarsIgnoringVisibility
+import androidx.compose.foundation.layout.navigationBarsIgnoringVisibility
 import androidx.compose.foundation.layout.windowInsetsPadding
 import androidx.compose.runtime.MutableFloatState
 import androidx.compose.animation.core.spring
@@ -156,6 +157,14 @@ import com.sameerasw.overcast.weather.provider.WeatherProviders
 import com.sameerasw.overcast.weather.MoonPhase
 import com.sameerasw.overcast.weather.moonPhaseAt
 import kotlinx.coroutines.delay
+import kotlinx.coroutines.flow.drop
+import androidx.compose.runtime.SideEffect
+import androidx.compose.animation.AnimatedContent
+import androidx.compose.animation.fadeIn
+import androidx.compose.animation.fadeOut
+import androidx.compose.animation.togetherWith
+import androidx.compose.runtime.derivedStateOf
+import androidx.compose.runtime.snapshotFlow
 import kotlinx.coroutines.launch
 import java.text.SimpleDateFormat
 import java.util.Date
@@ -184,10 +193,13 @@ internal class WeatherPresentation(
     val now: Long,
     val haptics: WeatherEffectHaptics?,
     val iconStyle: WeatherIconStyle,
+    val timeline: WeatherTimeline? = null,
+    val clock: () -> Long = { now },
+    val clockLabel: Long = now,
 )
 
 @Composable
-internal fun rememberWeatherPresentation(real: WeatherSnapshot?): WeatherPresentation {
+internal fun rememberWeatherPresentation(real: WeatherSnapshot?, timeline: WeatherTimeline? = null): WeatherPresentation {
     val context = LocalContext.current
     val settings = remember { SettingsRepository(context) }
     var settingsVersion by remember { mutableIntStateOf(0) }
@@ -202,7 +214,7 @@ internal fun rememberWeatherPresentation(real: WeatherSnapshot?): WeatherPresent
     val tempOverride = remember(settingsVersion) { settings.getSimulatedTempC() }
     val alertOverride = remember(settingsVersion) { settings.getSimulatedAlertId() }
     val simulated = real?.let { r -> simulation?.let { WeatherSimulation.apply(r, it) } ?: r }
-    val snapshot = simulated?.let { WeatherSimulation.withTimeOfDay(it, timeOverride) }?.let { s -> tempOverride?.let { s.copy(tempC = it) } ?: s }
+    val baseSnapshot = simulated?.let { WeatherSimulation.withTimeOfDay(it, timeOverride) }?.let { s -> tempOverride?.let { s.copy(tempC = it) } ?: s }
         ?.let { s -> WeatherSimulation.alertsFor(alertOverride, System.currentTimeMillis())?.let { s.copy(alerts = it) } ?: s }
     val units = remember(settingsVersion) { WeatherUnits.from(settings) }
     val iconStyle = remember(settingsVersion) { WeatherIconStyle.fromId(settings.getWeatherIconStyle()) }
@@ -213,10 +225,31 @@ internal fun rememberWeatherPresentation(real: WeatherSnapshot?): WeatherPresent
             clock = System.currentTimeMillis()
         }
     }
-    val now = WeatherSimulation.timeFor(snapshot, timeOverride, clock)
+    val now = WeatherSimulation.timeFor(baseSnapshot, timeOverride, clock)
+    val timelineEnabled = remember(settingsVersion) { settings.isAmbientTimelineEnabled() }
+    val points = remember(baseSnapshot, now / 60_000L) { baseSnapshot?.let { timelinePoints(it, now) }.orEmpty() }
+    val timelineActive = timeline != null && timelineEnabled && points.size > 1
+    SideEffect { timeline?.points = if (timelineEnabled) points else emptyList() }
+    val step by remember(timeline) { derivedStateOf { timeline?.value?.roundToInt() ?: 0 } }
+    val atNow by remember(timeline) { derivedStateOf { (timeline?.value ?: 0f) < 0.001f } }
+    val tempHalfDegrees by remember(timeline) { derivedStateOf { ((timeline?.tempAt(timeline.value) ?: 0.0) * 2).roundToInt() } }
+    val virtualQuarterHour by remember(timeline) { derivedStateOf { (timeline?.timeAt(timeline.value) ?: 0L) / QUARTER_HOUR_MS } }
+    val snapshot = if (!timelineActive || baseSnapshot == null || atNow) {
+        baseSnapshot
+    } else {
+        val point = points[step.coerceIn(0, points.lastIndex)]
+        baseSnapshot.copy(
+            tempC = tempHalfDegrees / 2.0,
+            condition = point.condition,
+            conditionText = point.conditionText ?: conditionLabel(context, point.condition),
+            isDay = point.isDay,
+            chanceOfRain = point.chanceOfRain ?: baseSnapshot.chanceOfRain,
+        )
+    }
+    val paletteNow = if (timelineActive && !atNow) virtualQuarterHour * QUARTER_HOUR_MS else now
     val palette = animatedPalette(
-        remember(snapshot?.condition, snapshot?.isDay, snapshot?.extras?.sunriseMillis, snapshot?.extras?.sunsetMillis, now / 60_000L, timeOverride) {
-            WeatherPalette.from(snapshot, now, timeOverride)
+        remember(snapshot?.condition, snapshot?.isDay, snapshot?.extras?.sunriseMillis, snapshot?.extras?.sunsetMillis, paletteNow / 60_000L, timeOverride) {
+            WeatherPalette.from(snapshot, paletteNow, timeOverride)
         },
     )
     val effects = remember(settingsVersion) { settings.isWeatherEffectsEnabled() && !DeviceUtils.isPowerSaveMode(context) }
@@ -226,7 +259,10 @@ internal fun rememberWeatherPresentation(real: WeatherSnapshot?): WeatherPresent
     val effectSpec = remember(effects, snapshot?.condition, snapshot?.isDay, snapshot?.windKph, simulation?.id) {
         snapshot?.takeIf { effects }?.let { simulation?.spec ?: WeatherEffectSpec.from(it) } ?: WeatherEffectSpec.None
     }
-    return WeatherPresentation(snapshot, palette, effectSpec, units, now, haptics, iconStyle)
+    val activeTimeline = timeline?.takeIf { timelineActive }
+    val clockProvider = remember(activeTimeline, now) { if (activeTimeline != null) ({ activeTimeline.timeAt(activeTimeline.value) }) else ({ now }) }
+    val clockLabel = if (timelineActive && step > 0) points[step.coerceIn(0, points.lastIndex)].timeMillis else now
+    return WeatherPresentation(snapshot, palette, effectSpec, units, now, haptics, iconStyle, activeTimeline, clockProvider, clockLabel)
 }
 
 @OptIn(ExperimentalMaterial3Api::class, ExperimentalMaterial3ExpressiveApi::class)
@@ -237,7 +273,8 @@ fun WeatherScreen(onOpenSettings: () -> Unit = {}) {
     val scope = rememberCoroutineScope()
     val settings = remember { SettingsRepository(context) }
     val state by WeatherRepository.state.collectAsState()
-    val presentation = rememberWeatherPresentation(state.snapshot)
+    val timeline = remember { WeatherTimeline() }
+    val presentation = rememberWeatherPresentation(state.snapshot, timeline)
     val snapshot = presentation.snapshot
     val units = presentation.units
     val now = presentation.now
@@ -330,6 +367,16 @@ fun WeatherScreen(onOpenSettings: () -> Unit = {}) {
         val rootWidthPx = remember { mutableIntStateOf(0) }
         val ambientClockPx = remember { mutableIntStateOf(0) }
         val ambientForecastPx = remember { mutableIntStateOf(0) }
+        val timelineActive = presentation.timeline != null
+        val showTimelineReturn by remember { derivedStateOf { timeline.value > 0.05f } }
+        LaunchedEffect(immersive) {
+            if (!immersive) timeline.animateTo(scope, 0f)
+        }
+        LaunchedEffect(timeline) {
+            snapshotFlow { timeline.value.roundToInt() }.drop(1).collect {
+                if (ambient.floatValue > 0.5f) HapticUtil.performLightHaptic(view)
+            }
+        }
         BackHandler(enabled = immersive) { scope.launch { settleAmbient(ambient, 0f, compatibility) } }
         val window = remember(view) { view.context.findWindow() }
         DisposableEffect(immersive) {
@@ -341,8 +388,8 @@ fun WeatherScreen(onOpenSettings: () -> Unit = {}) {
         DisposableEffect(Unit) {
             onDispose { window?.let { WindowCompat.getInsetsController(it, view).show(WindowInsetsCompat.Type.systemBars()) } }
         }
-        Box(Modifier.fillMaxSize().onSizeChanged { rootHeightPx.intValue = it.height; rootWidthPx.intValue = it.width }.weatherGlass(effectSpec, snapshot, now, { collapse.floatValue }, effectRamp, !sheetOpen)) {
-                WeatherSkyBackground(snapshot, now, palette, collapse = { collapse.floatValue })
+        Box(Modifier.fillMaxSize().onSizeChanged { rootHeightPx.intValue = it.height; rootWidthPx.intValue = it.width }.weatherGlass(effectSpec, snapshot, presentation.clock, { collapse.floatValue }, effectRamp, !sheetOpen)) {
+                WeatherSkyBackground(snapshot, presentation.clock, palette, collapse = { collapse.floatValue })
                 val topFadePx = if (headerBottom.floatValue > 0f) {
                     val expandedFade = with(density) { 36.dp.toPx() }
                     val collapsedFade = headerBottom.floatValue + with(density) { 40.dp.toPx() }
@@ -582,7 +629,22 @@ fun WeatherScreen(onOpenSettings: () -> Unit = {}) {
                                     }
                                 }
                             }
-                            val showAmbientForecast = settings.isAmbientForecastEnabled() &&
+                            if (timelineActive && immersive) {
+                                Box(
+                                    Modifier
+                                        .fillMaxSize()
+                                        .timelineGestures(
+                                            timeline = timeline,
+                                            scope = scope,
+                                            stepPx = (rootWidthPx.intValue / TIMELINE_STEPS_PER_SCREEN).coerceAtLeast(1f),
+                                            onVerticalDrag = { dy -> ambient.floatValue = (ambient.floatValue + dy / ambientRangePx).coerceIn(0f, 1f) },
+                                            onVerticalEnd = {
+                                                scope.launch { settleAmbient(ambient, if (ambient.floatValue > 0.5f) 1f else 0f, compatibility) }
+                                            },
+                                        ),
+                                )
+                            }
+                            val showAmbientForecast = settings.isAmbientForecastEnabled() && !timelineActive &&
                                 ambientForecastFits(rootHeightPx.intValue, ambientClockPx.intValue, ambientForecastPx.intValue)
                             Column(
                                 Modifier
@@ -612,12 +674,30 @@ fun WeatherScreen(onOpenSettings: () -> Unit = {}) {
                                         .ambientCenter(
                                             ambient.floatValue,
                                             (rootHeightPx.intValue - ambientInset * 2).coerceAtLeast(0),
-                                            ambientAvailable(rootHeightPx.intValue, ambientClockPx.intValue, if (showAmbientForecast) ambientForecastPx.intValue else 0),
+                                            ambientAvailable(rootHeightPx.intValue, ambientClockPx.intValue, if (showAmbientForecast || timelineActive) ambientForecastPx.intValue else 0),
                                         ),
                                 )
                             }
                             if (ambient.floatValue > 0f) {
-                                AmbientClock({ ambient.floatValue }, palette, Modifier.align(Alignment.TopCenter).onSizeChanged { ambientClockPx.intValue = it.height })
+                                AmbientClock(
+                                    { ambient.floatValue },
+                                    palette,
+                                    Modifier.align(Alignment.TopCenter).onSizeChanged { ambientClockPx.intValue = it.height },
+                                    timeMillis = presentation.clockLabel.takeIf { timelineActive },
+                                    showReturn = timelineActive && showTimelineReturn,
+                                    onReturn = {
+                                        HapticUtil.performVirtualKeyHaptic(view)
+                                        timeline.animateTo(scope, 0f)
+                                    },
+                                )
+                                if (timelineActive) {
+                                    TimelineRain(
+                                        { ambient.floatValue },
+                                        snapshot?.chanceOfRain,
+                                        palette,
+                                        Modifier.align(Alignment.BottomCenter).onSizeChanged { ambientForecastPx.intValue = it.height },
+                                    )
+                                }
                                 if (showAmbientForecast) {
                                     AmbientForecast({ ambient.floatValue }, snapshot, units.temperature, palette, Modifier.align(Alignment.BottomCenter).onSizeChanged { ambientForecastPx.intValue = it.height })
                                 }
@@ -649,18 +729,19 @@ internal fun skyState(snapshot: WeatherSnapshot, now: Long): Pair<Float, Boolean
 internal val SKY_HEIGHT = 360.dp
 
 @Composable
-internal fun SkyBody(snapshot: WeatherSnapshot, now: Long, collapse: () -> Float, rise: () -> Float = { 1f }) {
-    val (t, isSun) = skyState(snapshot, now) ?: return
+internal fun SkyBody(snapshot: WeatherSnapshot, now: () -> Long, collapse: () -> Float, rise: () -> Float = { 1f }) {
     val hide = (1f - collapse() * 1.6f).coerceIn(0f, 1f)
     if (hide <= 0f) return
-    val color = if (isSun) Color(0xFFFFE2A8) else Color(0xFFE6ECFF)
-    val moonPhase = snapshot.moonPhaseAt(now)
     Canvas(
         Modifier
             .fillMaxWidth()
             .height(SKY_HEIGHT)
             .graphicsLayer { translationY = -collapse() * 60.dp.toPx() },
     ) {
+        val time = now()
+        val (t, isSun) = skyState(snapshot, time) ?: return@Canvas
+        val color = if (isSun) Color(0xFFFFE2A8) else Color(0xFFE6ECFF)
+        val moonPhase = snapshot.moonPhaseAt(time)
         val shown = t * rise()
         val horizonFade = (minOf(shown, 1f - shown) / 0.1f).coerceIn(0f, 1f)
         val x = size.width * (0.9f - 0.8f * shown)
@@ -717,6 +798,9 @@ private const val EFFECTS_DELAY_MS = 450L
 private const val EFFECTS_FADE_MS = 1800
 private const val REFRESH_DELAY_MS = 600L
 private val COLLAPSE_RANGE = 520.dp
+private const val QUARTER_HOUR_MS = 15 * 60_000L
+private const val TIMELINE_STEPS_PER_SCREEN = 4f
+private val TIMELINE_RETURN_SIZE = 48.dp
 private const val TWO_PANE_MIN_WIDTH_DP = 600
 
 @Composable
@@ -1416,7 +1500,14 @@ private suspend fun settleAmbient(state: MutableFloatState, target: Float, insta
 }
 
 @Composable
-internal fun AmbientClock(ambient: () -> Float, palette: WeatherPalette, modifier: Modifier) {
+internal fun AmbientClock(
+    ambient: () -> Float,
+    palette: WeatherPalette,
+    modifier: Modifier,
+    timeMillis: Long? = null,
+    showReturn: Boolean = false,
+    onReturn: () -> Unit = {},
+) {
     val context = LocalContext.current
     var now by remember { mutableLongStateOf(System.currentTimeMillis()) }
     LaunchedEffect(Unit) {
@@ -1426,13 +1517,13 @@ internal fun AmbientClock(ambient: () -> Float, palette: WeatherPalette, modifie
         }
     }
     val pattern = if (DateFormat.is24HourFormat(context)) "HH:mm" else "hh:mm"
-    val text = remember(now, pattern) { SimpleDateFormat(pattern, Locale.getDefault()).format(Date(now)) }
-    Text(
-        text = text,
-        color = palette.onBase,
-        fontFamily = temperatureFont(70, 200),
-        fontSize = 40.sp,
-        maxLines = 1,
+    val shown = timeMillis ?: now
+    val text = remember(shown, pattern) { SimpleDateFormat(pattern, Locale.getDefault()).format(Date(shown)) }
+    var previous by remember { mutableLongStateOf(shown) }
+    val forward = shown >= previous
+    SideEffect { previous = shown }
+    val clockStyle = TextStyle(fontFamily = temperatureFont(70, 200), fontSize = 40.sp)
+    Column(
         modifier = modifier
             .windowInsetsPadding(WindowInsets.statusBarsIgnoringVisibility)
             .padding(top = AMBIENT_EDGE_GAP)
@@ -1441,7 +1532,71 @@ internal fun AmbientClock(ambient: () -> Float, palette: WeatherPalette, modifie
                 alpha = reveal
                 translationY = (1f - reveal) * 16.dp.toPx()
             },
+        horizontalAlignment = Alignment.CenterHorizontally,
+    ) {
+        if (timeMillis != null) {
+            val dayLabel = timelineDayLabel(context, shown, now)
+            AnimatedContent(targetState = dayLabel, transitionSpec = { fadeIn() togetherWith fadeOut() }, label = "timelineDay") { label ->
+                Text(label, color = palette.onBaseMuted, style = MaterialTheme.typography.titleMedium, maxLines = 1)
+            }
+        }
+        Row(verticalAlignment = Alignment.CenterVertically) {
+        if (timeMillis != null) {
+            Box(Modifier.size(TIMELINE_RETURN_SIZE), contentAlignment = Alignment.Center) {
+                val reveal by animateFloatAsState(if (showReturn) 1f else 0f, spring(stiffness = Spring.StiffnessMediumLow), label = "timelineReturn")
+                IconButton(
+                    onClick = onReturn,
+                    enabled = showReturn,
+                    modifier = Modifier.graphicsLayer {
+                        alpha = reveal
+                        scaleX = 0.6f + 0.4f * reveal
+                        scaleY = 0.6f + 0.4f * reveal
+                    },
+                ) {
+                    Icon(painterResource(R.drawable.rounded_schedule_24), stringResource(R.string.timeline_back_to_now), tint = palette.onBase)
+                }
+            }
+        }
+        RollingClock(text, palette.onBase, forward, clockStyle)
+        if (timeMillis != null) Spacer(Modifier.size(TIMELINE_RETURN_SIZE))
+        }
+    }
+}
+
+private fun timelineDayLabel(context: Context, shown: Long, now: Long): String {
+    val zone = java.time.ZoneId.systemDefault()
+    val days = java.time.temporal.ChronoUnit.DAYS.between(
+        java.time.Instant.ofEpochMilli(now).atZone(zone).toLocalDate(),
+        java.time.Instant.ofEpochMilli(shown).atZone(zone).toLocalDate(),
     )
+    return when (days) {
+        0L -> context.getString(R.string.weather_detail_today)
+        1L -> context.getString(R.string.timeline_tomorrow)
+        else -> SimpleDateFormat("EEEE", Locale.getDefault()).format(Date(shown))
+    }
+}
+
+@Composable
+internal fun TimelineRain(ambient: () -> Float, chance: Int?, palette: WeatherPalette, modifier: Modifier = Modifier) {
+    if (chance == null) return
+    var previous by remember { mutableIntStateOf(chance) }
+    val forward = chance >= previous
+    SideEffect { previous = chance }
+    Row(
+        modifier
+            .windowInsetsPadding(WindowInsets.navigationBarsIgnoringVisibility)
+            .padding(bottom = AMBIENT_EDGE_GAP)
+            .graphicsLayer {
+                val reveal = ((ambient() - 0.4f) / 0.6f).coerceIn(0f, 1f)
+                alpha = reveal
+                translationY = (1f - reveal) * 16.dp.toPx()
+            },
+        verticalAlignment = Alignment.CenterVertically,
+        horizontalArrangement = Arrangement.spacedBy(8.dp),
+    ) {
+        Icon(painterResource(R.drawable.rounded_rainy_24), null, tint = palette.accent, modifier = Modifier.size(28.dp))
+        RollingClock("$chance%", palette.onBase, forward, MaterialTheme.typography.headlineMedium)
+    }
 }
 
 @Composable
