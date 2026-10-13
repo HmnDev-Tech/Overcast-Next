@@ -8,7 +8,6 @@ import androidx.compose.animation.core.FastOutSlowInEasing
 import androidx.compose.animation.core.Animatable
 import androidx.compose.animation.core.animate
 import androidx.compose.ui.input.pointer.pointerInput
-import androidx.compose.foundation.gestures.detectVerticalDragGestures
 import androidx.compose.foundation.gestures.detectTapGestures
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.BoxScope
@@ -43,6 +42,15 @@ import com.sameerasw.overcast.weather.effects.WeatherEffectSpec
 import com.sameerasw.overcast.weather.effects.WeatherEffects
 import com.sameerasw.overcast.weather.model.WeatherSnapshot
 import kotlinx.coroutines.delay
+import androidx.compose.runtime.rememberCoroutineScope
+import androidx.compose.ui.platform.LocalView
+import androidx.compose.ui.platform.LocalConfiguration
+import androidx.compose.runtime.derivedStateOf
+import androidx.compose.runtime.snapshotFlow
+import kotlinx.coroutines.flow.drop
+import com.sameerasw.overcast.utils.HapticUtil
+import kotlin.math.roundToInt
+import androidx.compose.runtime.setValue
 import java.util.Calendar
 
 internal val AMBIENT_EDGE_GAP = 16.dp
@@ -152,15 +160,13 @@ internal fun AmbientWeatherScene(
     val rainSurfaces = remember { mutableStateMapOf<String, RainSurfaceSource>() }
     val cards = { rainSurfaces.entries.mapNotNull { (key, source) -> source.resolve(key) } }
     val timeline = presentation.timeline
+    val scope = rememberCoroutineScope()
+    val view = LocalView.current
+    val stepPx = with(LocalDensity.current) { LocalConfiguration.current.screenWidthDp.dp.toPx() } / TIMELINE_STEPS_PER_SCREEN
+    val showReturn by remember(timeline) { derivedStateOf { (timeline?.value ?: 0f) > 0.05f } }
     LaunchedEffect(timeline) {
         if (timeline == null) return@LaunchedEffect
-        while (true) {
-            delay(TIMELINE_IDLE_MS)
-            val end = timeline.maxPosition.coerceAtMost(TIMELINE_MAX_STEPS)
-            animate(0f, end, animationSpec = tween((end * TIMELINE_STEP_MS).toInt(), easing = FastOutSlowInEasing)) { v, _ -> timeline.set(v) }
-            delay(TIMELINE_HOLD_MS)
-            animate(end, 0f, animationSpec = tween(TIMELINE_RETURN_MS, easing = FastOutSlowInEasing)) { v, _ -> timeline.set(v) }
-        }
+        snapshotFlow { timeline.value.roundToInt() }.drop(1).collect { HapticUtil.performLightHaptic(view) }
     }
     val animate = animateIntro && !CompatibilityMode.enabled.value
     val intro = remember { Animatable(if (animate) 0f else 1f) }
@@ -173,7 +179,8 @@ internal fun AmbientWeatherScene(
         BoxWithConstraints(
             modifier.fillMaxSize()
                 .weatherGlass(spec, snapshot, presentation.clock, { 0f }, rise = riseStage)
-                .dismissOnTouch(onDismiss),
+                .dismissOnTouch(onDismiss)
+                .then(if (timeline != null) Modifier.timelineGestures(timeline, scope, stepPx, onVerticalDrag = {}, onVerticalEnd = {}) else Modifier),
         ) {
             WeatherSkyBackground(snapshot, presentation.clock, presentation.palette, { 0f }, riseStage)
             WeatherEffects(
@@ -207,7 +214,12 @@ internal fun AmbientWeatherScene(
                         presentation.palette,
                         Modifier.align(Alignment.TopCenter).onSizeChanged { clockPx.intValue = it.height },
                         timeMillis = presentation.clockLabel.takeIf { timeline != null },
+                        showReturn = showReturn,
                         atNow = presentation.timelineAtNow,
+                        onReturn = {
+                            HapticUtil.performVirtualKeyHaptic(view)
+                            timeline?.animateTo(scope, 0f)
+                        },
                     )
                     if (timeline != null) {
                         TimelineRain(
@@ -233,17 +245,11 @@ internal fun AmbientWeatherScene(
 }
 
 private const val AMBIENT_INTRO_MS = 2600
-private const val TIMELINE_IDLE_MS = 14_000L
-private const val TIMELINE_HOLD_MS = 3_500L
-private const val TIMELINE_STEP_MS = 900
-private const val TIMELINE_RETURN_MS = 3_200
-private const val TIMELINE_MAX_STEPS = 24f
+private const val TIMELINE_STEPS_PER_SCREEN = 4f
 
 private fun Modifier.dismissOnTouch(onDismiss: (() -> Unit)?): Modifier =
     if (onDismiss == null) {
         this
     } else {
-        this
-            .pointerInput(onDismiss) { detectTapGestures(onTap = { onDismiss() }) }
-            .pointerInput(onDismiss) { detectVerticalDragGestures { _, _ -> onDismiss() } }
+        this.pointerInput(onDismiss) { detectTapGestures(onTap = { onDismiss() }) }
     }
