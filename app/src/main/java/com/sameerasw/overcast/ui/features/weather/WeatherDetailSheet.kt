@@ -400,7 +400,7 @@ fun WeatherScreen(onOpenSettings: () -> Unit = {}) {
                 } else {
                     0f
                 }
-                if (!effectSpec.isEmpty && effectRamp > 0f) {
+                if (effectRamp > 0f) {
                     val effectsBottomFadePx = WindowInsets.navigationBars.getBottom(density) + with(density) { 20.dp.toPx() }
                     WeatherEffects(
                         spec = effectSpec,

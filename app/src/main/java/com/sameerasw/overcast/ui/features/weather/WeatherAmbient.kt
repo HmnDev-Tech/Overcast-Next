@@ -176,15 +176,13 @@ internal fun AmbientWeatherScene(
                 .dismissOnTouch(onDismiss),
         ) {
             WeatherSkyBackground(snapshot, presentation.clock, presentation.palette, { 0f }, riseStage)
-            if (!spec.isEmpty) {
-                WeatherEffects(
-                    spec = spec,
-                    modifier = Modifier.matchParentSize(),
-                    strength = 1.7f * stage(0.1f, 0.6f),
-                    surfaces = cards,
-                    cover = cards,
-                )
-            }
+            WeatherEffects(
+                spec = spec,
+                modifier = Modifier.matchParentSize(),
+                strength = 1.7f * stage(0.1f, 0.6f),
+                surfaces = cards,
+                cover = cards,
+            )
             if (snapshot != null) {
                 val maxHeightPx = this@BoxWithConstraints.constraints.maxHeight
                 val forecastShown = showForecast && timeline == null && ambientForecastFits(maxHeightPx, clockPx.intValue, forecastPx.intValue)

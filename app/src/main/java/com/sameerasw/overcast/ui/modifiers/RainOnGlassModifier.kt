@@ -4,8 +4,13 @@ import android.graphics.RenderEffect
 import android.graphics.RuntimeShader
 import android.os.Build
 import com.sameerasw.overcast.utils.CompatibilityMode
+import com.sameerasw.overcast.weather.effects.EffectQuality
 import androidx.annotation.RequiresApi
+import androidx.compose.animation.core.animateFloatAsState
+import androidx.compose.animation.core.tween
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.derivedStateOf
+import androidx.compose.runtime.getValue
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.mutableFloatStateOf
 import androidx.compose.runtime.remember
@@ -18,14 +23,19 @@ import androidx.compose.ui.platform.LocalDensity
 
 @Composable
 fun Modifier.rainOnGlass(intensity: Float, slant: Float, light: () -> Offset): Modifier {
-    if (Build.VERSION.SDK_INT < Build.VERSION_CODES.TIRAMISU || CompatibilityMode.enabled.value || intensity <= 0f) return this
-    return RainOnGlassApi33.apply(this, intensity.coerceIn(0f, 1f), slant, LocalDensity.current.density, light)
+    val level = animateFloatAsState(intensity.coerceIn(0f, 1f), tween(GLASS_FADE_MS), label = "glassIntensity")
+    val lean = animateFloatAsState(slant, tween(GLASS_FADE_MS), label = "glassSlant")
+    val visible by remember { derivedStateOf { level.value > 0.002f } }
+    if (Build.VERSION.SDK_INT < Build.VERSION_CODES.TIRAMISU || CompatibilityMode.enabled.value || !EffectQuality.glassEnabled || !visible) return this
+    return RainOnGlassApi33.apply(this, { level.value }, { lean.value }, LocalDensity.current.density, light)
 }
+
+private const val GLASS_FADE_MS = 1400
 
 @RequiresApi(Build.VERSION_CODES.TIRAMISU)
 private object RainOnGlassApi33 {
     @Composable
-    fun apply(modifier: Modifier, intensity: Float, slant: Float, density: Float, light: () -> Offset): Modifier {
+    fun apply(modifier: Modifier, intensity: () -> Float, slant: () -> Float, density: Float, light: () -> Offset): Modifier {
         val shader = remember { runCatching { RuntimeShader(SOURCE) }.getOrNull() } ?: return modifier
         val time = remember { mutableFloatStateOf(0f) }
         LaunchedEffect(Unit) {
@@ -37,8 +47,8 @@ private object RainOnGlassApi33 {
         return modifier.graphicsLayer {
             shader.setFloatUniform("resolution", size.width, size.height)
             shader.setFloatUniform("time", time.floatValue)
-            shader.setFloatUniform("intensity", intensity)
-            shader.setFloatUniform("slant", slant)
+            shader.setFloatUniform("intensity", intensity())
+            shader.setFloatUniform("slant", slant())
             shader.setFloatUniform("density", density)
             val l = light()
             shader.setFloatUniform("lightPos", l.x * size.width, l.y)

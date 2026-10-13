@@ -5,6 +5,7 @@ import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableFloatStateOf
+import androidx.compose.runtime.mutableIntStateOf
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.rememberUpdatedState
@@ -25,6 +26,7 @@ import androidx.compose.ui.graphics.Path
 import androidx.compose.ui.graphics.StrokeCap
 import androidx.compose.ui.graphics.drawscope.DrawScope
 import androidx.compose.ui.graphics.drawscope.clipPath
+import androidx.compose.ui.graphics.drawscope.translate
 import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.ui.layout.onSizeChanged
 import androidx.compose.ui.platform.LocalDensity
@@ -49,9 +51,22 @@ interface WeatherEffectHaptics {
     fun onStrike(intensity: Float)
 }
 
-// Each particle is a pure function of its seed values and elapsed time, so there's no per-frame state to update.
+object EffectQuality {
+    var level by mutableIntStateOf(2)
+
+    val glassEnabled: Boolean get() = level >= 1
+    val blurEnabled: Boolean get() = level >= 1
+
+    internal val particleScale: Float get() = when (level) {
+        0 -> 0.35f
+        1 -> 0.65f
+        else -> 1f
+    }
+}
+
 private class ParticleField(val x: FloatArray, val phase: FloatArray, val speed: FloatArray, val size: FloatArray) {
-    val count: Int get() = x.size
+    val capacity: Int get() = x.size
+    var count: Int = x.size
 
     companion object {
         fun create(count: Int, seed: Int): ParticleField {
@@ -62,7 +77,94 @@ private class ParticleField(val x: FloatArray, val phase: FloatArray, val speed:
     }
 }
 
-private class LayerState(val layer: WeatherEffectLayer, val field: ParticleField)
+private class LayerState(var layer: WeatherEffectLayer, val field: ParticleField) {
+    var level = 1f
+    var targetLevel = 1f
+    var timeOffset = 0f
+    var intensity = layer.intensity
+    var slant = (layer as? WeatherEffectLayer.Rain)?.slant ?: 0f
+    val dropPath = Path()
+    var brushes: Array<Brush>? = null
+    var brushWidth = 0f
+    var glow: Brush? = null
+    var glowWidth = 0f
+
+    fun current(): WeatherEffectLayer = when (layer) {
+        is WeatherEffectLayer.Rain -> WeatherEffectLayer.Rain(intensity, slant)
+        is WeatherEffectLayer.Snow -> WeatherEffectLayer.Snow(intensity)
+        is WeatherEffectLayer.Hail -> WeatherEffectLayer.Hail(intensity)
+        is WeatherEffectLayer.Clouds -> WeatherEffectLayer.Clouds(intensity)
+        is WeatherEffectLayer.Fog -> WeatherEffectLayer.Fog(intensity)
+        is WeatherEffectLayer.SunGlow -> WeatherEffectLayer.SunGlow(intensity)
+        is WeatherEffectLayer.Stars -> WeatherEffectLayer.Stars(intensity)
+        is WeatherEffectLayer.Lightning -> WeatherEffectLayer.Lightning(intensity)
+    }
+
+    val falling: Boolean get() = layer is WeatherEffectLayer.Rain || layer is WeatherEffectLayer.Snow || layer is WeatherEffectLayer.Hail
+}
+
+private fun seedFor(layer: WeatherEffectLayer): Int = when (layer) {
+    is WeatherEffectLayer.Rain -> 17
+    is WeatherEffectLayer.Snow -> 7936
+    is WeatherEffectLayer.Hail -> 15855
+    is WeatherEffectLayer.Clouds -> 23774
+    is WeatherEffectLayer.Fog -> 31693
+    is WeatherEffectLayer.SunGlow -> 39612
+    is WeatherEffectLayer.Stars -> 47531
+    is WeatherEffectLayer.Lightning -> 55450
+}
+
+private fun reconcile(states: MutableList<LayerState>, spec: WeatherEffectSpec, animateIn: Boolean, now: Float) {
+    states.forEach { it.targetLevel = 0f }
+    spec.layers.forEach { layer ->
+        val existing = states.firstOrNull { it.layer::class == layer::class }
+        if (existing != null) {
+            if (layer is WeatherEffectLayer.Rain) {
+                val ratio = rainSpeedFactor(layer.intensity) / rainSpeedFactor(existing.layer.intensity)
+                existing.timeOffset = (now + existing.timeOffset) / ratio - now
+            }
+            existing.layer = layer
+            existing.targetLevel = 1f
+        } else {
+            val full = LayerState(layer, ParticleField.create(particleCount(layer.withIntensity(1f)), seedFor(layer)))
+            if (animateIn) {
+                full.level = 0f
+            }
+            states.add(full)
+        }
+    }
+}
+
+private fun rainSpeedFactor(intensity: Float): Float = 0.8f + 0.4f * intensity
+
+private fun WeatherEffectLayer.withIntensity(value: Float): WeatherEffectLayer = when (this) {
+    is WeatherEffectLayer.Rain -> copy(intensity = value)
+    is WeatherEffectLayer.Snow -> copy(intensity = value)
+    is WeatherEffectLayer.Hail -> copy(intensity = value)
+    is WeatherEffectLayer.Clouds -> copy(intensity = value)
+    is WeatherEffectLayer.Fog -> copy(intensity = value)
+    is WeatherEffectLayer.SunGlow -> copy(intensity = value)
+    is WeatherEffectLayer.Stars -> copy(intensity = value)
+    is WeatherEffectLayer.Lightning -> copy(intensity = value)
+}
+
+private fun advance(states: MutableList<LayerState>, dt: Float) {
+    val fade = dt / FADE_S
+    val ease = (dt * INTENSITY_EASE).coerceAtMost(1f)
+    val scale = EffectQuality.particleScale
+    states.forEach { state ->
+        state.level = if (state.level < state.targetLevel) minOf(state.level + fade, state.targetLevel) else maxOf(state.level - fade, state.targetLevel)
+        if (state.targetLevel > 0f) {
+            state.intensity += (state.layer.intensity - state.intensity) * ease
+            val rain = state.layer as? WeatherEffectLayer.Rain
+            if (rain != null) state.slant += (rain.slant - state.slant) * ease
+        }
+        val wanted = particleCount(state.current())
+        val scaled = if (state.layer is WeatherEffectLayer.Clouds || state.layer is WeatherEffectLayer.Fog) wanted else (wanted * scale).toInt().coerceAtLeast(4)
+        state.field.count = scaled.coerceIn(0, state.field.capacity)
+    }
+    states.removeAll { it.level <= 0f && it.targetLevel <= 0f }
+}
 
 @Composable
 fun WeatherEffects(
@@ -75,9 +177,8 @@ fun WeatherEffects(
     cover: () -> List<RainSurface> = surfaces,
     scrollTick: () -> Int = { 0 },
 ) {
-    if (spec.isEmpty) return
     if (CompatibilityMode.enabled.value) {
-        StillWeatherEffects(spec, modifier, strength, clearTop, cover, scrollTick)
+        if (!spec.isEmpty) StillWeatherEffects(spec, modifier, strength, clearTop, cover, scrollTick)
         return
     }
     val density = LocalDensity.current
@@ -87,26 +188,53 @@ fun WeatherEffects(
     val currentSurfaces by rememberUpdatedState(surfaces)
     val currentCover by rememberUpdatedState(cover)
     val currentScrollTick by rememberUpdatedState(scrollTick)
-    val snowState = remember(spec) { SnowState() }
+    val snowState = remember { SnowState() }
+    val states = remember { mutableListOf<LayerState>() }
     val coverPath = remember { Path() }
-    val layers = remember(spec) {
-        spec.layers.mapIndexed { index, layer ->
-            val field = ParticleField.create(particleCount(layer), seed = index * 7919 + 17)
-            LayerState(layer, field)
-        }
+    var layerTick by remember { mutableIntStateOf(0) }
+    val first = remember { booleanArrayOf(true) }
+    val clock = remember { floatArrayOf(0f) }
+    remember(spec) {
+        reconcile(states, spec, animateIn = !first[0], now = clock[0])
+        first[0] = false
     }
+    layerTick
+    if (states.isEmpty()) return
 
-    LaunchedEffect(layers) {
+    LaunchedEffect(Unit) {
         val start = withFrameNanos { it }
+        var previousFrame = start
         var previous = 0f
+        var windowStart = start
+        var windowFrames = 0
+        var slowWindows = 0
         while (true) {
-            val now = withFrameNanos { (it - start) / 1_000_000_000f }
+            val frame = withFrameNanos { it }
+            val now = (frame - start) / 1_000_000_000f
+            val dt = ((frame - previousFrame) / 1_000_000_000f).coerceIn(0f, 0.1f)
+            previousFrame = frame
+            windowFrames++
+            if (frame - windowStart >= QUALITY_WINDOW_NS) {
+                val averageMs = (frame - windowStart) / 1_000_000f / windowFrames
+                slowWindows = if (averageMs > SLOW_FRAME_MS && now > QUALITY_GRACE_S) slowWindows + 1 else 0
+                if (slowWindows >= SLOW_WINDOWS_TO_DOWNGRADE && EffectQuality.level > 0) {
+                    EffectQuality.level--
+                    slowWindows = 0
+                }
+                windowStart = frame
+                windowFrames = 0
+            }
+            val before = states.size
+            advance(states, dt)
+            if (states.size != before) layerTick++
             time.floatValue = now
+            clock[0] = now
             val h = canvasSize.height.toFloat()
             currentHaptics?.let { sink ->
-                if (h > 0f && now > previous) emitHaptics(sink, layers, previous, now, h, density)
+                if (h > 0f && now > previous) emitHaptics(sink, states, previous, now, h, density)
             }
-            val all = currentSurfaces()
+            val needsSurfaces = states.any { it.falling }
+            val all = if (needsSurfaces) currentSurfaces() else emptyList()
             val tick = currentScrollTick()
             if (tick != snowState.tick) {
                 snowState.tick = tick
@@ -115,10 +243,11 @@ fun WeatherEffects(
             }
             snowState.settled = now - snowState.lastMove >= SURFACE_SETTLE_S
             snowState.falling.removeAll { now - it.t0 > FALL_S }
-            val snow = layers.firstOrNull { it.layer is WeatherEffectLayer.Snow }
+            val snow = states.firstOrNull { it.layer is WeatherEffectLayer.Snow && it.targetLevel > 0f }
             if (snow != null && snowState.settled && now > previous && canvasSize.width > 0) {
                 settleSnow(snowState.piles, all, snow.field, previous, now, canvasSize.width.toFloat(), h, density.density)
             }
+            if (snow == null && snowState.piles.isNotEmpty() && states.none { it.layer is WeatherEffectLayer.Snow }) snowState.piles.clear()
             previous = now
         }
     }
@@ -126,33 +255,51 @@ fun WeatherEffects(
     Canvas(
         modifier
             .onSizeChanged { canvasSize = it }
-            .graphicsLayer { compositingStrategy = CompositingStrategy.Offscreen }
+            .graphicsLayer { if (clearTop > 0.dp) compositingStrategy = CompositingStrategy.Offscreen }
             .clearTopMask(clearTop),
     ) {
         val t = time.floatValue
-        // Falling particles are hidden behind UI cards; ambient layers (clouds, fog, glow, stars) stay visible through the translucent cards.
+        val needsSurfaces = states.any { it.falling }
+        val all = if (needsSurfaces) currentSurfaces() else emptyList()
+        val settledSurfaces = if (snowState.settled) all else emptyList()
+        val cards = if (!needsSurfaces) emptyList() else if (cover === surfaces) all else currentCover()
         coverPath.rewind()
-        currentCover().forEach { surface ->
+        cards.forEach { surface ->
             val r = min(surface.cornerRadius, min(surface.rect.width, surface.rect.height) / 2f)
             coverPath.addRoundRect(RoundRect(surface.rect, CornerRadius(r, r)))
         }
-        layers.forEach { state ->
-            when (val layer = state.layer) {
-                is WeatherEffectLayer.Rain -> clipPath(coverPath, ClipOp.Difference) {
-                    drawRain(state, layer, t, strength, if (snowState.settled) surfaces() else emptyList())
-                }
-                is WeatherEffectLayer.Snow -> clipPath(coverPath, ClipOp.Difference) {
-                    drawSnow(state.field, t, layer.intensity, strength, if (snowState.settled) surfaces() else emptyList(), snowState)
-                }
-                is WeatherEffectLayer.Hail -> clipPath(coverPath, ClipOp.Difference) {
-                    drawHail(state, layer.intensity, t, strength)
-                }
-                is WeatherEffectLayer.Clouds -> drawClouds(state.field, t, layer.intensity, strength, fog = false)
-                is WeatherEffectLayer.Fog -> drawClouds(state.field, t, layer.intensity, strength, fog = true)
-                is WeatherEffectLayer.SunGlow -> drawSunGlow(t, layer.intensity, strength)
-                is WeatherEffectLayer.Stars -> drawStars(state.field, t, layer.intensity, strength)
-                is WeatherEffectLayer.Lightning -> drawLightning(t, layer.intensity, strength)
+        states.forEach { state ->
+            if (state.falling || state.layer is WeatherEffectLayer.Lightning) return@forEach
+            val layer = state.current()
+            val fade = strength * state.level
+            when (layer) {
+                is WeatherEffectLayer.Clouds -> drawClouds(state, t, layer.intensity, fade, fog = false)
+                is WeatherEffectLayer.Fog -> drawClouds(state, t, layer.intensity, fade, fog = true)
+                is WeatherEffectLayer.SunGlow -> drawSunGlow(state, t, layer.intensity, fade)
+                is WeatherEffectLayer.Stars -> drawStars(state.field, t, layer.intensity, fade)
+                else -> Unit
             }
+        }
+        if (needsSurfaces) {
+            clipPath(coverPath, ClipOp.Difference) {
+                states.forEach { state ->
+                    val layer = state.current()
+                    val fade = strength * state.level
+                    when (layer) {
+                        is WeatherEffectLayer.Rain -> {
+                            val target = state.layer as WeatherEffectLayer.Rain
+                            val ratio = (0.12f + 0.2f * layer.intensity) / (0.12f + 0.2f * target.intensity)
+                            drawRain(state, target.copy(slant = layer.slant), t + state.timeOffset, fade * ratio, settledSurfaces)
+                        }
+                        is WeatherEffectLayer.Snow -> drawSnow(state.field, t, layer.intensity, fade, settledSurfaces, snowState)
+                        is WeatherEffectLayer.Hail -> drawHail(state, layer.intensity, t, fade)
+                        else -> Unit
+                    }
+                }
+            }
+        }
+        states.forEach { state ->
+            if (state.layer is WeatherEffectLayer.Lightning) drawLightning(t, state.intensity, strength * state.level)
         }
     }
 }
@@ -210,9 +357,9 @@ internal fun DrawScope.drawWeatherEffectsStill(spec: WeatherEffectSpec, strength
             is WeatherEffectLayer.Rain -> behindCards(cover) { drawRain(state, layer, STILL_TIME_S, strength, emptyList()) }
             is WeatherEffectLayer.Snow -> behindCards(cover) { drawSnow(state.field, STILL_TIME_S, layer.intensity, strength, emptyList(), snowState) }
             is WeatherEffectLayer.Hail -> behindCards(cover) { drawHail(state, layer.intensity, STILL_TIME_S, strength) }
-            is WeatherEffectLayer.Clouds -> drawClouds(state.field, STILL_TIME_S, layer.intensity, strength, fog = false)
-            is WeatherEffectLayer.Fog -> drawClouds(state.field, STILL_TIME_S, layer.intensity, strength, fog = true)
-            is WeatherEffectLayer.SunGlow -> drawSunGlow(STILL_TIME_S, layer.intensity, strength)
+            is WeatherEffectLayer.Clouds -> drawClouds(state, STILL_TIME_S, layer.intensity, strength, fog = false)
+            is WeatherEffectLayer.Fog -> drawClouds(state, STILL_TIME_S, layer.intensity, strength, fog = true)
+            is WeatherEffectLayer.SunGlow -> drawSunGlow(state, STILL_TIME_S, layer.intensity, strength)
             is WeatherEffectLayer.Stars -> drawStars(state.field, STILL_TIME_S, layer.intensity, strength)
             // A full-strength flash would wash the whole widget out, so the frozen frame is the flash at a gentle strength.
             is WeatherEffectLayer.Lightning -> drawLightning(lightningStrike(0) + 0.05f, layer.intensity, strength * 0.35f)
@@ -221,6 +368,12 @@ internal fun DrawScope.drawWeatherEffectsStill(spec: WeatherEffectSpec, strength
 }
 
 private const val STILL_TIME_S = 4.2f
+private const val FADE_S = 1.4f
+private const val INTENSITY_EASE = 2.5f
+private const val QUALITY_WINDOW_NS = 1_500_000_000L
+private const val SLOW_FRAME_MS = 21f
+private const val QUALITY_GRACE_S = 4f
+private const val SLOW_WINDOWS_TO_DOWNGRADE = 3
 
 private fun DrawScope.behindCards(cover: Path?, block: DrawScope.() -> Unit) {
     if (cover == null) block() else clipPath(cover, ClipOp.Difference, block)
@@ -281,13 +434,15 @@ private fun emitHaptics(
     density: Density,
 ) {
     layers.forEach { state ->
+        if (state.targetLevel <= 0f) return@forEach
+        val offset = state.timeOffset
         when (val layer = state.layer) {
             is WeatherEffectLayer.Rain -> for (i in 0 until state.field.count) {
                 val fall = rainFall(state.field, i, layer.intensity, h, density)
-                val before = progress(state.field, i, fall, previous)
-                val after = progress(state.field, i, fall, now)
+                val before = progress(state.field, i, fall, previous + offset)
+                val after = progress(state.field, i, fall, now + offset)
                 if (crossed(before, after, fall.impact)) {
-                    val cycle = cycleOf(state.field, i, fall, now) - if (after >= fall.impact) 0 else 1
+                    val cycle = cycleOf(state.field, i, fall, now + offset) - if (after >= fall.impact) 0 else 1
                     if (roll(i, cycle, HERO_SALT) < RAIN_HAPTIC_SHARE) sink.onDrop(layer.intensity, state.field.size[i])
                 }
             }
@@ -359,7 +514,7 @@ private fun DrawScope.drawRain(
     val field = state.field
     val w = size.width
     val h = size.height
-    val dropPath = Path()
+    val dropPath = state.dropPath
     for (i in 0 until field.count) {
         val length = rainLength(field, i, layer.intensity, this)
         val fall = rainFall(field, i, layer.intensity, h, this)
@@ -428,14 +583,7 @@ private fun DrawScope.drawDrop(path: Path, tailX: Float, tailY: Float, headX: Fl
     )
     path.quadraticTo(mx - nx * radius * 0.3f, my - ny * radius * 0.3f, tailX, tailY)
     path.close()
-    drawPath(
-        path,
-        Brush.linearGradient(
-            colors = listOf(Color.White.copy(alpha = 0f), Color.White.copy(alpha = alpha)),
-            start = Offset(tailX, tailY),
-            end = Offset(headX, headY),
-        ),
-    )
+    drawPath(path, Color.White.copy(alpha = alpha * 0.7f))
 }
 
 private fun surfaceDepth(i: Int, cycle: Int): Int {
@@ -654,40 +802,41 @@ private fun DrawScope.drawSnow(
     }
 }
 
-private fun DrawScope.drawClouds(field: ParticleField, t: Float, intensity: Float, strength: Float, fog: Boolean) {
+private fun DrawScope.drawClouds(state: LayerState, t: Float, intensity: Float, strength: Float, fog: Boolean) {
+    val field = state.field
     val w = size.width
     val h = size.height
+    val alpha = (if (fog) 0.14f else 0.1f) * intensity * strength
+    if (alpha <= 0f) return
+    if (state.brushes == null || state.brushWidth != w) {
+        state.brushes = Array(field.capacity) { i ->
+            val radius = (if (fog) 0.55f else 0.35f + 0.25f * field.size[i]) * w
+            Brush.radialGradient(listOf(Color.White, Color.Transparent), center = Offset.Zero, radius = radius)
+        }
+        state.brushWidth = w
+    }
+    val brushes = state.brushes!!
     for (i in 0 until field.count) {
         val drift = (field.x[i] + t * (0.008f + 0.012f * field.speed[i])) % 1f
         val cx = (drift * 1.6f - 0.3f) * w
         val cy = if (fog) (0.15f + 0.8f * field.phase[i]) * h else (0.02f + 0.35f * field.phase[i]) * h
         val radius = (if (fog) 0.55f else 0.35f + 0.25f * field.size[i]) * w
-        val alpha = (if (fog) 0.14f else 0.1f) * intensity * strength
-        drawCircle(
-            brush = Brush.radialGradient(
-                colors = listOf(Color.White.copy(alpha = alpha), Color.Transparent),
-                center = Offset(cx, cy),
-                radius = radius,
-            ),
-            radius = radius,
-            center = Offset(cx, cy),
-        )
+        translate(cx, cy) {
+            drawCircle(brushes[i], radius, Offset.Zero, alpha = alpha)
+        }
     }
 }
 
-private fun DrawScope.drawSunGlow(t: Float, intensity: Float, strength: Float) {
-    val center = Offset(size.width * 0.85f, 0f)
+private fun DrawScope.drawSunGlow(state: LayerState, t: Float, intensity: Float, strength: Float) {
     val radius = size.width * 0.9f
+    if (state.glow == null || state.glowWidth != size.width) {
+        state.glow = Brush.radialGradient(listOf(SUN_COLOR, Color.Transparent), center = Offset.Zero, radius = radius)
+        state.glowWidth = size.width
+    }
     val pulse = 0.85f + 0.15f * sin(t * 0.6f)
-    drawCircle(
-        brush = Brush.radialGradient(
-            colors = listOf(SUN_COLOR.copy(alpha = 0.22f * intensity * pulse * strength), Color.Transparent),
-            center = center,
-            radius = radius,
-        ),
-        radius = radius,
-        center = center,
-    )
+    translate(size.width * 0.85f, 0f) {
+        drawCircle(state.glow!!, radius, Offset.Zero, alpha = 0.22f * intensity * pulse * strength)
+    }
 }
 
 private fun DrawScope.drawStars(field: ParticleField, t: Float, intensity: Float, strength: Float) {

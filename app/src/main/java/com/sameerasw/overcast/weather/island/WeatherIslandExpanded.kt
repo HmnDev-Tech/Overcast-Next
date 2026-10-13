@@ -105,14 +105,12 @@ fun WeatherIslandExpanded(
             .background(Color.Black)
             .clickable(onClick = onOpenApp),
     ) {
-        if (!effectSpec.isEmpty) {
-            WeatherEffects(
-                spec = effectSpec,
-                modifier = Modifier.matchParentSize(),
-                clearTop = clearTop,
-                haptics = haptics,
-            )
-        }
+        WeatherEffects(
+            spec = effectSpec,
+            modifier = Modifier.matchParentSize(),
+            clearTop = clearTop,
+            haptics = haptics,
+        )
         Column(Modifier.fillMaxWidth()) {
             Spacer(Modifier.height((clearTop - compactHeight).coerceAtLeast(0.dp)))
             Row(
