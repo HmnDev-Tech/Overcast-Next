@@ -42,6 +42,7 @@ import com.sameerasw.overcast.weather.effects.WeatherEffectSpec
 import com.sameerasw.overcast.weather.effects.WeatherEffects
 import com.sameerasw.overcast.weather.model.WeatherSnapshot
 import kotlinx.coroutines.delay
+import androidx.compose.runtime.SideEffect
 import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.ui.platform.LocalView
 import androidx.compose.ui.platform.LocalConfiguration
@@ -162,22 +163,17 @@ internal fun AmbientWeatherScene(
     val cards = { rainSurfaces.entries.mapNotNull { (key, source) -> source.resolve(key) } }
     val timeline = presentation.timeline
     val scope = rememberCoroutineScope()
-    val view = LocalView.current
     val stepPx = with(LocalDensity.current) { LocalConfiguration.current.screenWidthDp.dp.toPx() } / TIMELINE_STEPS_PER_SCREEN
     val showReturn by remember(timeline) { derivedStateOf { (timeline?.value ?: 0f) > 0.05f } }
+    SideEffect { timeline?.loop = autoAnimate }
     LaunchedEffect(timeline, autoAnimate) {
         if (timeline == null || !autoAnimate) return@LaunchedEffect
         while (true) {
             delay(TIMELINE_IDLE_MS)
-            val end = timeline.maxPosition.coerceAtMost(TIMELINE_MAX_STEPS)
-            animate(0f, end, animationSpec = tween((end * TIMELINE_STEP_MS).toInt(), easing = FastOutSlowInEasing)) { v, _ -> timeline.set(v) }
-            delay(TIMELINE_HOLD_MS)
-            animate(end, 0f, animationSpec = tween(TIMELINE_RETURN_MS, easing = FastOutSlowInEasing)) { v, _ -> timeline.set(v) }
+            val end = timeline.maxPosition
+            animate(0f, end, animationSpec = tween((end * TIMELINE_STEP_MS).toInt(), easing = LinearEasing)) { v, _ -> timeline.set(v) }
+            timeline.set(0f)
         }
-    }
-    LaunchedEffect(timeline) {
-        if (timeline == null) return@LaunchedEffect
-        snapshotFlow { timeline.value.roundToInt() }.drop(1).collect { HapticUtil.performLightHaptic(view) }
     }
     val animate = animateIntro && !CompatibilityMode.enabled.value
     val intro = remember { Animatable(if (animate) 0f else 1f) }
@@ -227,10 +223,7 @@ internal fun AmbientWeatherScene(
                         timeMillis = presentation.clockLabel.takeIf { timeline != null },
                         showReturn = showReturn && !autoAnimate,
                         atNow = presentation.timelineAtNow,
-                        onReturn = {
-                            HapticUtil.performVirtualKeyHaptic(view)
-                            timeline?.animateTo(scope, 0f)
-                        },
+                        onReturn = { timeline?.animateTo(scope, 0f) },
                     )
                     if (timeline != null) {
                         TimelineRain(
@@ -258,10 +251,7 @@ internal fun AmbientWeatherScene(
 private const val AMBIENT_INTRO_MS = 2600
 private const val TIMELINE_STEPS_PER_SCREEN = 4f
 private const val TIMELINE_IDLE_MS = 14_000L
-private const val TIMELINE_HOLD_MS = 3_500L
 private const val TIMELINE_STEP_MS = 900
-private const val TIMELINE_RETURN_MS = 3_200
-private const val TIMELINE_MAX_STEPS = 24f
 
 private fun Modifier.dismissOnTouch(onDismiss: (() -> Unit)?): Modifier =
     if (onDismiss == null) {

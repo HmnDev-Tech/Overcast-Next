@@ -52,18 +52,23 @@ internal class TimelinePoint(
     val conditionText: String?,
 )
 
-internal fun timelinePoints(snapshot: WeatherSnapshot, now: Long): List<TimelinePoint> {
+internal fun timelinePoints(snapshot: WeatherSnapshot, now: Long, loop: Boolean = false): List<TimelinePoint> {
     val current = TimelinePoint(now, snapshot.tempC, snapshot.condition, snapshot.isDay, snapshot.chanceOfRain, snapshot.conditionText)
     val later = snapshot.upcomingHours(now).filter { it.timeMillis > now }
         .map { TimelinePoint(it.timeMillis, it.tempC, it.condition, it.isDay, it.chanceOfRain, null) }
-    return listOf(current) + later
+    if (!loop || later.isEmpty()) return listOf(current) + later
+    val days = ((later.last().timeMillis - now) / DAY_MS + 1).coerceAtLeast(1)
+    return listOf(current) + later + TimelinePoint(now + days * DAY_MS, snapshot.tempC, snapshot.condition, snapshot.isDay, snapshot.chanceOfRain, snapshot.conditionText)
 }
+
+private const val DAY_MS = 24 * 60 * 60_000L
 
 @Stable
 internal class WeatherTimeline {
     var value by mutableFloatStateOf(0f)
         private set
     var points by mutableStateOf(emptyList<TimelinePoint>())
+    var loop by mutableStateOf(false)
 
     private var job: Job? = null
 

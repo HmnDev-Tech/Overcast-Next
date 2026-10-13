@@ -230,7 +230,8 @@ internal fun rememberWeatherPresentation(real: WeatherSnapshot?, timeline: Weath
     }
     val now = WeatherSimulation.timeFor(baseSnapshot, timeOverride, clock)
     val timelineEnabled = remember(settingsVersion) { settings.isAmbientTimelineEnabled() }
-    val points = remember(baseSnapshot, now / 60_000L) { baseSnapshot?.let { timelinePoints(it, now) }.orEmpty() }
+    val looping = timeline?.loop == true
+    val points = remember(baseSnapshot, now / 60_000L, looping) { baseSnapshot?.let { timelinePoints(it, now, looping) }.orEmpty() }
     val timelineActive = timeline != null && timelineEnabled && points.size > 1
     SideEffect { timeline?.points = if (timelineEnabled) points else emptyList() }
     val step by remember(timeline) { derivedStateOf { timeline?.value?.roundToInt() ?: 0 } }
@@ -1527,7 +1528,8 @@ internal fun AmbientClock(
             delay(60_000L - now % 60_000L)
         }
     }
-    val pattern = if (DateFormat.is24HourFormat(context)) "HH:mm" else "hh:mm"
+    val is24Hour = DateFormat.is24HourFormat(context)
+    val pattern = if (is24Hour) "HH:mm" else "h:mm"
     val shown = timeMillis ?: now
     val text = remember(shown, pattern) { SimpleDateFormat(pattern, Locale.getDefault()).format(Date(shown)) }
     var previous by remember { mutableLongStateOf(shown) }
@@ -1567,7 +1569,14 @@ internal fun AmbientClock(
             }
         }
         RollingClock(text, palette.onBase, forward, clockStyle)
-        if (timeMillis != null) Spacer(Modifier.size(TIMELINE_RETURN_SIZE))
+        if (timeMillis != null) {
+            Box(Modifier.width(TIMELINE_RETURN_SIZE).align(Alignment.Bottom).padding(start = 4.dp, bottom = 8.dp)) {
+                if (!is24Hour) {
+                    val meridiem = remember(shown) { SimpleDateFormat("a", Locale.getDefault()).format(Date(shown)) }
+                    CounterText(meridiem, palette.onBase, TextStyle(fontFamily = temperatureFont(70, 200), fontSize = 16.sp), forward = forward)
+                }
+            }
+        }
         }
     }
 }
