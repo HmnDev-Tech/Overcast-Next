@@ -170,8 +170,8 @@ private fun Summary(snapshot: WeatherSnapshot, units: WeatherUnits) {
             snapshot.conditionText,
             stringResource(
                 R.string.weather_high_low,
-                WeatherFormat.temperature(snapshot.highC, units.temperature),
-                WeatherFormat.temperature(snapshot.lowC, units.temperature),
+                WeatherFormat.temperature(snapshot.todayHighC(), units.temperature),
+                WeatherFormat.temperature(snapshot.todayLowC(), units.temperature),
             ),
             stringResource(R.string.weather_feels_like, WeatherFormat.temperature(snapshot.feelsLikeC, units.temperature)),
         ).filter { it.isNotBlank() }.joinToString(" · "),
@@ -220,7 +220,7 @@ private fun AlertCard(alert: WeatherAlert) {
 @Composable
 private fun HourlyStrip(snapshot: WeatherSnapshot, units: WeatherUnits, iconStyle: WeatherIconStyle) {
     val context = LocalContext.current
-    val hours = snapshot.hourly.take(6)
+    val hours = snapshot.upcomingHours().take(6)
     if (hours.isEmpty()) return
     Row(
         modifier = Modifier

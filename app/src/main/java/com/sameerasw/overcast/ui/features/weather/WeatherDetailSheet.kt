@@ -110,6 +110,7 @@ import android.app.Activity
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
+import androidx.compose.runtime.key
 import androidx.compose.runtime.mutableLongStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
@@ -515,7 +516,7 @@ fun WeatherScreen(onOpenSettings: () -> Unit = {}) {
                                     ) {
                                         AlertsSection(snapshot.activeAlerts().sortedByDescending { it.severity.ordinal }, palette)
                                         HourlySection(snapshot, units.temperature, palette)
-                                        snapshot.daily.orEmpty().takeIf { it.isNotEmpty() }
+                                        snapshot.upcomingDays().takeIf { it.isNotEmpty() }
                                             ?.let { DailySection(it, units.temperature, palette, Modifier.padding(horizontal = SIDE_PADDING)) }
                                         DetailsSection(snapshot, units, palette, Modifier.padding(horizontal = SIDE_PADDING))
                                         SunSection(snapshot, palette, Modifier.padding(horizontal = SIDE_PADDING))
@@ -548,7 +549,7 @@ fun WeatherScreen(onOpenSettings: () -> Unit = {}) {
                                                 verticalArrangement = Arrangement.spacedBy(20.dp),
                                             ) {
                                             AlertsSection(snapshot.activeAlerts().sortedByDescending { it.severity.ordinal }, palette)
-                                            snapshot.daily.orEmpty().takeIf { it.isNotEmpty() }
+                                            snapshot.upcomingDays().takeIf { it.isNotEmpty() }
                                                 ?.let { DailySection(it, units.temperature, palette, Modifier.padding(horizontal = SIDE_PADDING)) }
                                             SunSection(snapshot, palette, Modifier.padding(horizontal = SIDE_PADDING))
                                             }
@@ -837,7 +838,7 @@ internal fun Header(snapshot: WeatherSnapshot, unit: TemperatureUnit, palette: W
                 Spacer(Modifier.height(6.dp))
                 Text(
                     listOf(
-                        stringResource(R.string.weather_high_low, WeatherFormat.temperature(snapshot.highC, unit), WeatherFormat.temperature(snapshot.lowC, unit)),
+                        stringResource(R.string.weather_high_low, WeatherFormat.temperature(snapshot.todayHighC(), unit), WeatherFormat.temperature(snapshot.todayLowC(), unit)),
                         stringResource(R.string.weather_feels_like, WeatherFormat.temperature(snapshot.feelsLikeC, unit)),
                     ).joinToString(" · "),
                     color = palette.onBaseMuted,
@@ -1028,10 +1029,11 @@ private fun AlertCard(alert: WeatherAlert, palette: WeatherPalette, modifier: Mo
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
 internal fun HourlySection(snapshot: WeatherSnapshot, unit: TemperatureUnit, palette: WeatherPalette, surfacePrefix: String = "hourly") {
-    if (snapshot.hourly.isEmpty()) return
     val context = LocalContext.current
-    val hours = snapshot.hourly
-    val carouselState = rememberCarouselState { hours.size }
+    val now by rememberMinuteClock()
+    val hours = remember(snapshot, now) { snapshot.upcomingHours(now) }
+    if (hours.isEmpty()) return
+    val carouselState = key(hours.size) { rememberCarouselState { hours.size } }
     Column {
         HorizontalMultiBrowseCarousel(
             state = carouselState,
