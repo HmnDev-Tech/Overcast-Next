@@ -40,11 +40,6 @@ class SettingsRepository(
         const val KEY_WEATHER_REFRESH_MINUTES = "weather_refresh_minutes"
         const val KEY_WEATHER_EFFECTS = "weather_effects"
         const val KEY_WEATHER_HAPTICS = "weather_haptics"
-        const val KEY_ISLAND_MODE = "island_mode"
-        const val KEY_ISLAND_PEEK_ALERTS = "island_peek_alerts"
-        const val ISLAND_MODE_BRIEF = "brief"
-        const val ISLAND_MODE_COMPACT = "compact"
-        const val ISLAND_MODE_ALERTS = "alerts"
         const val KEY_DEBUG_SIMULATED_WEATHER = "debug_simulated_weather"
         const val KEY_DEBUG_SIMULATED_ALERT = "debug_simulated_alert"
         const val KEY_DEBUG_SIMULATED_TIME = "debug_simulated_time"
@@ -86,11 +81,7 @@ class SettingsRepository(
     fun isDeveloperModeEnabled(): Boolean = getBoolean(KEY_DEVELOPER_MODE_ENABLED, false)
     fun setDeveloperModeEnabled(enabled: Boolean) = putBoolean(KEY_DEVELOPER_MODE_ENABLED, enabled)
 
-    fun getIslandMode(): String = getString(KEY_ISLAND_MODE, ISLAND_MODE_COMPACT) ?: ISLAND_MODE_COMPACT
-    fun setIslandMode(mode: String) = putString(KEY_ISLAND_MODE, mode)
 
-    fun isIslandPeekAlertsEnabled(): Boolean = getBoolean(KEY_ISLAND_PEEK_ALERTS, true)
-    fun setIslandPeekAlertsEnabled(enabled: Boolean) = putBoolean(KEY_ISLAND_PEEK_ALERTS, enabled)
 
     fun registerChangeListener(listener: SharedPreferences.OnSharedPreferenceChangeListener) =
         prefs.registerOnSharedPreferenceChangeListener(listener)

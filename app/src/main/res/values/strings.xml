@@ -43,12 +43,6 @@
     <string name="weather_search_city">Search for a city</string>
     <string name="weather_search_no_results">No cities found</string>
     <string name="weather_section_display">Display</string>
-    <string name="weather_section_island">Dynamic island</string>
-    <string name="island_mode_title">Show on island</string>
-    <string name="island_mode_brief">Brief only</string>
-    <string name="island_mode_compact">Always</string>
-    <string name="island_mode_alerts">Alerts only</string>
-    <string name="island_peek_alerts_title">Peek for alerts</string>
     <string name="island_provider_label">Weather</string>
     <string name="island_provider_description">Overcast wants to show live weather, alerts and forecasts on your island.</string>
     <string name="weather_section_screensaver">Screensaver</string>

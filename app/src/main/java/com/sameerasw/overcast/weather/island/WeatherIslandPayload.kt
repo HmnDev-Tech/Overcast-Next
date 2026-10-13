@@ -62,11 +62,6 @@ object WeatherIslandPayload {
             else -> IslandTone.NONE
         }
 
-        val compactVisible = when (settings.getIslandMode()) {
-            SettingsRepository.ISLAND_MODE_COMPACT -> true
-            SettingsRepository.ISLAND_MODE_ALERTS -> alert != null
-            else -> false
-        }
         val lineEnd = if (alert != null) {
             alert.expiresMillis?.let { context.getString(R.string.weather_alert_until, formatTime(context, it)) } ?: temperature
         } else {
@@ -78,7 +73,6 @@ object WeatherIslandPayload {
             priority = PRIORITY,
             priorityOverride = PRIORITY_ALERT.takeIf { alert != null },
             placement = IslandPlacement.DYNAMIC,
-            compactVisible = compactVisible,
             compact = listOf(
                 IslandCellPayload(key = "weather.icon", iconId = iconId, tone = tone),
                 IslandCellPayload(key = "weather.temp", text = temperature, tone = IslandTone.NONE),
