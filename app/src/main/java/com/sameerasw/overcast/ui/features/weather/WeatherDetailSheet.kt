@@ -670,7 +670,9 @@ internal fun Modifier.foldAway(fraction: Float): Modifier =
     this
         .layout { measurable, constraints ->
             val placeable = measurable.measure(constraints)
-            layout(placeable.width, (placeable.height * (1f - fraction)).roundToInt()) { placeable.placeRelative(0, 0) }
+            layout(placeable.width, (placeable.height * (1f - fraction)).roundToInt()) {
+                if (fraction < 1f / 1.4f) placeable.placeRelative(0, 0)
+            }
         }
         .graphicsLayer { alpha = (1f - fraction * 1.4f).coerceIn(0f, 1f) }
 
