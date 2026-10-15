@@ -1,4 +1,4 @@
-name: Build release APK
+name: Build debug APK
 
 on:
   push:
@@ -13,6 +13,16 @@ jobs:
     steps:
       - name: Checkout repository
         uses: actions/checkout@v4
+
+      # The build includes island-sdk modules from the sibling ../essentials directory.
+      - name: Checkout essentials (island sdk)
+        uses: actions/checkout@v4
+        with:
+          repository: sameerasw/essentials
+          path: essentials-tmp
+
+      - name: Move essentials next to the workspace
+        run: mv "$GITHUB_WORKSPACE/essentials-tmp" "$GITHUB_WORKSPACE/../essentials"
 
       - name: Set up JDK 21
         uses: actions/setup-java@v4
