@@ -33,15 +33,15 @@ jobs:
             echo "RELEASE_KEYSTORE_BASE64 secret is not set; release APK will not be signed."
           fi
 
-      - name: Build release APK
+      - name: Build debug APK
         env:
           OVERCAST_KEYSTORE_PASSWORD: ${{ secrets.RELEASE_KEYSTORE_PASSWORD }}
           OVERCAST_KEY_ALIAS: ${{ secrets.RELEASE_KEY_ALIAS }}
           OVERCAST_KEY_PASSWORD: ${{ secrets.RELEASE_KEY_PASSWORD }}
-        run: ./gradlew assembleGithubRelease
+        run: ./gradlew assembleGithubDebug
 
       - name: Upload APK
         uses: actions/upload-artifact@v4
         with:
-          name: overcast-github-release
-          path: app/build/outputs/apk/github/release/*.apk
+          name: overcast-github-debug
+          path: app/build/outputs/apk/github/debug/*.apk
