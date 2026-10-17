@@ -42,6 +42,12 @@ class SettingsRepository(
         const val KEY_WEATHER_REFRESH_MINUTES = "weather_refresh_minutes"
         const val KEY_WEATHER_EFFECTS = "weather_effects"
         const val KEY_WEATHER_HAPTICS = "weather_haptics"
+        const val KEY_ALLERGEN_CARD = "allergen_card"
+        const val KEY_MAP_DEFAULT_LAYER = "map_default_layer"
+        const val KEY_MAP_ANIMATE_RADAR = "map_animate_radar"
+        const val KEY_ISLAND_STYLE = "island_style"
+        const val KEY_ISLAND_HOURLY = "island_hourly"
+        const val KEY_WIDGET_EXPRESSIVE_ANIMATE = "widget_expressive_animate"
         const val KEY_AI_PROVIDER = "ai_provider"
         const val KEY_AI_API_KEY = "ai_api_key"
         const val KEY_AI_MODEL = "ai_model"
@@ -100,6 +106,26 @@ class SettingsRepository(
 
     fun isWeatherHapticsEnabled(): Boolean = getBoolean(KEY_WEATHER_HAPTICS, true)
     fun setWeatherHapticsEnabled(enabled: Boolean) = putBoolean(KEY_WEATHER_HAPTICS, enabled)
+
+    fun isAllergenCardEnabled(): Boolean = getBoolean(KEY_ALLERGEN_CARD, true)
+    fun setAllergenCardEnabled(enabled: Boolean) = putBoolean(KEY_ALLERGEN_CARD, enabled)
+
+    // Map layers: "precipitation", "temperature" or "satellite".
+    fun getMapDefaultLayer(): String = getString(KEY_MAP_DEFAULT_LAYER, "precipitation") ?: "precipitation"
+    fun setMapDefaultLayer(layer: String) = putString(KEY_MAP_DEFAULT_LAYER, layer)
+
+    fun isMapAnimateRadarEnabled(): Boolean = getBoolean(KEY_MAP_ANIMATE_RADAR, true)
+    fun setMapAnimateRadarEnabled(enabled: Boolean) = putBoolean(KEY_MAP_ANIMATE_RADAR, enabled)
+
+    // Island presentation: "auto", "pill" (large, iPhone style), "compact" or "minimal" (punch hole).
+    fun getIslandStyle(): String = getString(KEY_ISLAND_STYLE, "auto") ?: "auto"
+    fun setIslandStyle(style: String) = putString(KEY_ISLAND_STYLE, style)
+
+    fun isIslandHourlyEnabled(): Boolean = getBoolean(KEY_ISLAND_HOURLY, true)
+    fun setIslandHourlyEnabled(enabled: Boolean) = putBoolean(KEY_ISLAND_HOURLY, enabled)
+
+    fun isWidgetExpressiveAnimationEnabled(): Boolean = getBoolean(KEY_WIDGET_EXPRESSIVE_ANIMATE, true)
+    fun setWidgetExpressiveAnimationEnabled(enabled: Boolean) = putBoolean(KEY_WIDGET_EXPRESSIVE_ANIMATE, enabled)
 
     fun getWeatherProvider(): String? = getString(KEY_WEATHER_PROVIDER, null)
     fun setWeatherProvider(id: String) = putString(KEY_WEATHER_PROVIDER, id)
