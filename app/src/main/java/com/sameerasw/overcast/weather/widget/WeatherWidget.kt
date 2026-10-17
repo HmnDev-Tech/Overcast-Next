@@ -218,6 +218,9 @@ object WeatherWidgetUpdater {
             runCatching { WidgetHub.refresh(app) }
             runCatching { WeatherWidget().updateAll(app) }
             runCatching { HourlyWidget().updateAll(app) }
+            runCatching { ExpressiveWidget().updateAll(app) }
+            // Short staged reveal of the expressive widget whenever the data updates.
+            ExpressiveWidgetAnimator.play(app)
         }
     }
 
@@ -229,6 +232,7 @@ object WeatherWidgetUpdater {
             val manager = GlanceAppWidgetManager(app)
             runCatching { manager.setWidgetPreviews(WeatherWidgetReceiver::class) }
             runCatching { manager.setWidgetPreviews(HourlyWidgetReceiver::class) }
+            runCatching { manager.setWidgetPreviews(ExpressiveWidgetReceiver::class) }
         }
     }
 }
