@@ -24,6 +24,7 @@ import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.PaddingValues
 import androidx.compose.foundation.layout.Row
+import androidx.compose.foundation.layout.RowScope
 import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
@@ -38,10 +39,12 @@ import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material3.FilledTonalButton
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
+import androidx.compose.material3.LoadingIndicator
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Slider
 import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
+import androidx.compose.material3.darkColorScheme
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
@@ -76,6 +79,7 @@ import com.sameerasw.overcast.R
 import com.sameerasw.overcast.data.repository.SettingsRepository
 import com.sameerasw.overcast.ui.core.pickers.SegmentedPicker
 import com.sameerasw.overcast.weather.location.DeviceLocationSource
+import com.sameerasw.overcast.weather.location.WeatherPlaces
 import com.sameerasw.overcast.weather.map.MapTileCache
 import com.sameerasw.overcast.weather.map.MapTilesSequence
 import com.sameerasw.overcast.weather.map.TemperatureGrid
@@ -97,6 +101,7 @@ enum class MapLayer { PRECIPITATION, TEMPERATURE, SATELLITE }
 private const val MIN_ZOOM = 3f
 private const val MAX_ZOOM = 16f
 private const val OVERLAY_MAX_ZOOM = 12
+private const val MAX_TILE_ATTEMPTS = 3
 
 private object Mercator {
     private const val TILE = 256.0
@@ -145,6 +150,12 @@ private class MapViewport(lat: Double, lon: Double, initialZoom: Float) {
         centerLat = Mercator.latAt(nextCy, newZoom.toDouble()).coerceIn(-85.0, 85.0)
     }
 
+    // Buttons zoom about the screen center.
+    fun zoomAtCenter(factor: Float, viewSize: Size) {
+        if (viewSize == Size.Zero) return
+        zoomBy(factor, Offset(viewSize.width / 2f, viewSize.height / 2f), viewSize)
+    }
+
     fun snapTo(newLat: Double, newLon: Double) {
         centerLat = newLat
         centerLon = newLon
@@ -173,11 +184,14 @@ fun WeatherMapScreen(onClose: () -> Unit, modifier: Modifier = Modifier) {
     var frameIndex by remember { mutableIntStateOf(0) }
     var playing by remember { mutableStateOf(settings.isMapAnimateRadarEnabled()) }
     var mapError by remember { mutableStateOf<String?>(null) }
+    var framesLoading by remember { mutableStateOf(true) }
+    var gridLoading by remember { mutableStateOf(false) }
 
     LaunchedEffect(Unit) {
         val manual = if (settings.getWeatherLocationMode() == "manual") settings.getWeatherManualLocation() else null
         val resolved = manual?.let { it.first to it.second }
             ?: DeviceLocationSource.current(context)?.let { it.latitude to it.longitude }
+            ?: WeatherPlaces(context).saved().firstOrNull()?.let { it.latitude to it.longitude }
             ?: (50.11 to 8.68)
         deviceLocation = resolved
         viewport.snapTo(resolved.first, resolved.second)
@@ -186,6 +200,8 @@ fun WeatherMapScreen(onClose: () -> Unit, modifier: Modifier = Modifier) {
 
     LaunchedEffect(layer) {
         mapError = null
+        probedPoint.value = null
+        framesLoading = layer != MapLayer.TEMPERATURE
         if (layer == MapLayer.PRECIPITATION || layer == MapLayer.SATELLITE) {
             try {
                 val frames = if (layer == MapLayer.SATELLITE) {
@@ -196,6 +212,8 @@ fun WeatherMapScreen(onClose: () -> Unit, modifier: Modifier = Modifier) {
                 frameIndex = (frames.frames.size - 1).coerceAtLeast(0)
             } catch (e: Exception) {
                 mapError = e.message
+            } finally {
+                framesLoading = false
             }
         }
     }
@@ -214,119 +232,167 @@ fun WeatherMapScreen(onClose: () -> Unit, modifier: Modifier = Modifier) {
         }
     }
 
-    probedPoint.value = null
+    val satelliteEmpty = layer == MapLayer.SATELLITE && !framesLoading &&
+        mapError == null && (satellite?.frames?.size ?: 0) == 0
 
     BackHandler(onBack = onClose)
 
-    Box(
-        modifier = modifier
-            .fillMaxSize()
-            .background(Color.Black)
-            .pointerInput(viewSize) {
-                detectTransformGestures { centroid, pan, zoom, _ ->
-                    if (viewSize == Size.Zero) return@detectTransformGestures
-                    if (zoom != 1f) viewport.zoomBy(zoom, centroid, viewSize)
-                    viewport.pan(pan.x, pan.y)
+    // The map chrome sits on dark translucent plates, so the whole screen runs on a dark
+    // color scheme; otherwise themed controls (layer picker, slider) render dark on dark.
+    MaterialTheme(colorScheme = darkColorScheme(primary = Color(0xFF4FC3F7), secondary = Color(0xFF7ED491))) {
+        Box(
+            modifier = modifier
+                .fillMaxSize()
+                .background(Color.Black)
+                .pointerInput(layer) {
+                    detectTapGestures { offset ->
+                        val point = screenToLatLon(offset, viewport, viewSize)
+                        if (point != null) probedPoint.value = point
+                    }
                 }
-            }
-            .pointerInput(layer) {
-                detectTapGestures { offset ->
-                    val point = screenToLatLon(offset, viewport, viewSize)
-                    if (point != null) probedPoint.value = point
-                }
-            },
-    ) {
-        MapCanvas(
-            viewport = viewport,
-            layer = layer,
-            viewSize = viewSize,
-            onSize = { viewSize = it },
-            deviceLocation = deviceLocation,
-            radar = radar,
-            satellite = satellite,
-            frameIndex = frameIndex,
-            error = mapError,
-        )
-
-        Column(
-            Modifier
-                .align(Alignment.TopCenter)
-                .statusBarsPadding()
-                .padding(top = 8.dp)
-                .padding(horizontal = 12.dp)
-                .fillMaxWidth(),
-            horizontalAlignment = Alignment.CenterHorizontally,
-            verticalArrangement = Arrangement.spacedBy(8.dp),
+                .pointerInput(viewSize) {
+                    detectTransformGestures { centroid, pan, zoom, _ ->
+                        if (viewSize == Size.Zero) return@detectTransformGestures
+                        if (zoom != 1f) viewport.zoomBy(zoom, centroid, viewSize)
+                        viewport.pan(pan.x, pan.y)
+                    }
+                },
         ) {
-            Row(
-                Modifier.fillMaxWidth(),
-                horizontalArrangement = Arrangement.SpaceBetween,
-                verticalAlignment = Alignment.CenterVertically,
-            ) {
-                MapIconButton(R.drawable.rounded_arrow_back_24, R.string.map_back, onClose)
-                Surface(color = Color.Black.copy(alpha = 0.55f), shape = RoundedCornerShape(50)) {
-                    Text(
-                        stringResource(R.string.map_title),
-                        color = Color.White,
-                        style = MaterialTheme.typography.titleSmall,
-                        modifier = Modifier.padding(horizontal = 16.dp, vertical = 8.dp),
-                    )
-                }
-                MapIconButton(R.drawable.rounded_my_location_24, R.string.map_my_location) {
-                    deviceLocation?.let { viewport.snapTo(it.first, it.second) }
-                }
-            }
-            LayerPicker(
-                selected = layer,
-                onSelected = { layer = it },
-                modifier = Modifier.fillMaxWidth(),
+            MapCanvas(
+                viewport = viewport,
+                layer = layer,
+                viewSize = viewSize,
+                onSize = { viewSize = it },
+                deviceLocation = deviceLocation,
+                radar = radar,
+                satellite = satellite,
+                frameIndex = frameIndex,
+                onGridLoading = { gridLoading = it },
             )
-            MapProbe()
-            mapError?.let { message ->
-                Surface(color = Color.Black.copy(alpha = 0.65f), shape = RoundedCornerShape(16.dp)) {
-                    Text(
-                        message,
-                        color = Color.White,
-                        style = MaterialTheme.typography.labelMedium,
-                        modifier = Modifier.padding(horizontal = 12.dp, vertical = 6.dp),
-                    )
+
+            Column(
+                Modifier
+                    .align(Alignment.TopCenter)
+                    .statusBarsPadding()
+                    .padding(top = 8.dp)
+                    .padding(horizontal = 12.dp)
+                    .fillMaxWidth(),
+                horizontalAlignment = Alignment.CenterHorizontally,
+                verticalArrangement = Arrangement.spacedBy(8.dp),
+            ) {
+                Row(
+                    Modifier.fillMaxWidth(),
+                    horizontalArrangement = Arrangement.SpaceBetween,
+                    verticalAlignment = Alignment.CenterVertically,
+                ) {
+                    MapIconButton(R.drawable.rounded_arrow_back_24, R.string.map_back, onClose)
+                    Surface(color = Color.Black.copy(alpha = 0.55f), shape = RoundedCornerShape(50)) {
+                        Text(
+                            stringResource(R.string.map_title),
+                            color = Color.White,
+                            style = MaterialTheme.typography.titleSmall,
+                            modifier = Modifier.padding(horizontal = 16.dp, vertical = 8.dp),
+                        )
+                    }
+                    MapIconButton(R.drawable.rounded_my_location_24, R.string.map_my_location) {
+                        deviceLocation?.let { viewport.snapTo(it.first, it.second) }
+                    }
+                }
+                LayerPicker(
+                    selected = layer,
+                    onSelected = { layer = it },
+                    modifier = Modifier.fillMaxWidth(),
+                )
+                if (framesLoading || gridLoading) {
+                    StatusPill {
+                        LoadingIndicator(Modifier.size(16.dp))
+                        Spacer(Modifier.width(8.dp))
+                        Text(
+                            stringResource(R.string.map_loading),
+                            color = Color.White,
+                            style = MaterialTheme.typography.labelMedium,
+                        )
+                    }
+                }
+                if (satelliteEmpty) {
+                    StatusPill {
+                        Text(
+                            stringResource(R.string.map_satellite_empty),
+                            color = Color.White,
+                            style = MaterialTheme.typography.labelMedium,
+                        )
+                    }
+                }
+                MapProbe()
+                mapError?.let { message ->
+                    StatusPill {
+                        Text(message, color = Color.White, style = MaterialTheme.typography.labelMedium)
+                    }
                 }
             }
+
+            Column(
+                Modifier
+                    .align(Alignment.CenterEnd)
+                    .navigationBarsPadding()
+                    .padding(end = 12.dp),
+                verticalArrangement = Arrangement.spacedBy(8.dp),
+            ) {
+                MapIconButton(R.drawable.rounded_add_24, R.string.map_zoom_in) {
+                    viewport.zoomAtCenter(1.6f, viewSize)
+                }
+                MapIconButton(R.drawable.rounded_remove_24, R.string.map_zoom_out) {
+                    viewport.zoomAtCenter(1f / 1.6f, viewSize)
+                }
+            }
+
+            MapLegend(
+                layer = layer,
+                modifier = Modifier
+                    .align(Alignment.BottomStart)
+                    .navigationBarsPadding()
+                    .padding(start = 16.dp, bottom = 88.dp),
+            )
+
+            RadarTimeline(
+                frames = when (layer) {
+                    MapLayer.PRECIPITATION -> radar
+                    MapLayer.SATELLITE -> satellite
+                    MapLayer.TEMPERATURE -> null
+                },
+                loading = framesLoading,
+                frameIndex = frameIndex,
+                playing = playing,
+                onFrameIndex = { frameIndex = it.coerceAtLeast(0) },
+                onPlaying = { playing = it },
+                modifier = Modifier
+                    .align(Alignment.BottomCenter)
+                    .navigationBarsPadding()
+                    .padding(horizontal = 16.dp, vertical = 8.dp)
+                    .fillMaxWidth(),
+            )
+
+            Text(
+                stringResource(R.string.map_attribution),
+                color = Color.White.copy(alpha = 0.7f),
+                style = MaterialTheme.typography.labelSmall,
+                modifier = Modifier
+                    .align(Alignment.BottomEnd)
+                    .navigationBarsPadding()
+                    .padding(end = 16.dp, bottom = 64.dp),
+            )
         }
+    }
+}
 
-        MapLegend(
-            layer = layer,
-            modifier = Modifier
-                .align(Alignment.BottomStart)
-                .navigationBarsPadding()
-                .padding(start = 16.dp, bottom = 88.dp),
-        )
-
-        RadarTimeline(
-            frames = when (layer) {
-                MapLayer.PRECIPITATION -> radar
-                MapLayer.SATELLITE -> satellite
-                MapLayer.TEMPERATURE -> null
-            },
-            frameIndex = frameIndex,
-            playing = playing,
-            onFrameIndex = { frameIndex = it.coerceAtLeast(0) },
-            onPlaying = { playing = it },
-            modifier = Modifier
-                .align(Alignment.BottomCenter)
-                .navigationBarsPadding()
-                .padding(horizontal = 16.dp, vertical = 8.dp)
-                .fillMaxWidth(),
-        )
-
-        Text(
-            stringResource(R.string.map_attribution),
-            color = Color.White.copy(alpha = 0.7f),
-            style = MaterialTheme.typography.labelSmall,
-            modifier = Modifier
-                .align(Alignment.BottomEnd)
-                .navigationBarsPadding()
-                .padding(end = 16.dp, bottom = 64.dp),
+@Composable
+private fun StatusPill(content: @Composable RowScope.() -> Unit) {
+    Surface(color = Color.Black.copy(alpha = 0.65f), shape = RoundedCornerShape(16.dp)) {
+        Row(
+            Modifier.padding(horizontal = 12.dp, vertical = 7.dp),
+            horizontalArrangement = Arrangement.Center,
+            verticalAlignment = Alignment.CenterVertically,
+            content = content,
         )
     }
 }
@@ -509,11 +575,16 @@ private fun MapCanvas(
     radar: MapTilesSequence?,
     satellite: MapTilesSequence?,
     frameIndex: Int,
-    error: String?,
+    onGridLoading: (Boolean) -> Unit,
 ) {
     val baseTiles = remember { mutableStateMapOf<String, android.graphics.Bitmap>() }
     val overlayTiles = remember { mutableStateMapOf<String, android.graphics.Bitmap>() }
+    val baseAttempts = remember { mutableStateMapOf<String, Int>() }
+    val overlayAttempts = remember { mutableStateMapOf<String, Int>() }
+    var baseRetry by remember { mutableIntStateOf(0) }
+    var overlayRetry by remember { mutableIntStateOf(0) }
     var grid by remember { mutableStateOf<TemperatureGrid?>(null) }
+    var gridAttempt by remember { mutableIntStateOf(0) }
 
     val zoom = viewport.zoom
     val centerLat = viewport.centerLat
@@ -523,13 +594,22 @@ private fun MapCanvas(
         tileWindow(zInt, centerLat, centerLon, viewSize)
     }
 
-    // Base map tiles for the visible window.
+    // Base map tiles for the visible window, with bounded retries for flaky networks.
     val baseUrls = remember(window) {
         window?.let { w -> buildList { for (x in w.xs) for (y in w.ys) add(osmUrl(w.z, x, y)) } } ?: emptyList()
     }
-    LaunchedEffect(baseUrls) {
+    LaunchedEffect(baseUrls, baseRetry) {
+        baseAttempts.keys.retainAll(baseUrls)
         baseUrls.forEach { url ->
-            if (!baseTiles.containsKey(url)) MapTileCache.get(url)?.let { baseTiles[url] = it }
+            if (baseTiles.containsKey(url)) return@forEach
+            val tries = baseAttempts[url] ?: 0
+            if (tries >= MAX_TILE_ATTEMPTS) return@forEach
+            baseAttempts[url] = tries + 1
+            MapTileCache.get(url)?.let { baseTiles[url] = it }
+        }
+        if (baseUrls.any { !baseTiles.containsKey(it) && (baseAttempts[it] ?: 0) < MAX_TILE_ATTEMPTS }) {
+            delay(2000)
+            baseRetry++
         }
     }
 
@@ -554,9 +634,18 @@ private fun MapCanvas(
             }
         }
     }
-    LaunchedEffect(overlayUrls) {
+    LaunchedEffect(overlayUrls, overlayRetry) {
+        overlayAttempts.keys.retainAll(overlayUrls)
         overlayUrls.forEach { url ->
-            if (!overlayTiles.containsKey(url)) MapTileCache.get(url)?.let { overlayTiles[url] = it }
+            if (overlayTiles.containsKey(url)) return@forEach
+            val tries = overlayAttempts[url] ?: 0
+            if (tries >= MAX_TILE_ATTEMPTS) return@forEach
+            overlayAttempts[url] = tries + 1
+            MapTileCache.get(url)?.let { overlayTiles[url] = it }
+        }
+        if (overlayUrls.any { !overlayTiles.containsKey(it) && (overlayAttempts[it] ?: 0) < MAX_TILE_ATTEMPTS }) {
+            delay(2000)
+            overlayRetry++
         }
     }
 
@@ -571,8 +660,10 @@ private fun MapCanvas(
             viewSize.width.toInt(),
         )
     }
-    LaunchedEffect(gridKey) {
+    LaunchedEffect(gridKey) { gridAttempt = 0 }
+    LaunchedEffect(gridKey, gridAttempt) {
         if (gridKey == null) return@LaunchedEffect
+        onGridLoading(true)
         val z = zoom.toDouble()
         val cx = Mercator.worldX(centerLon, z)
         val cy = Mercator.worldY(centerLat, z)
@@ -580,10 +671,19 @@ private fun MapCanvas(
         val maxLon = Mercator.lonAt(cx + viewSize.width / 2.0, z)
         val minLat = Mercator.latAt(cy + viewSize.height / 2.0, z)
         val maxLat = Mercator.latAt(cy - viewSize.height / 2.0, z)
-        try {
-            grid = WeatherMapRepository.temperatureGrid(minLat, maxLat, minLon, maxLon)
+        val result = try {
+            WeatherMapRepository.temperatureGrid(minLat, maxLat, minLon, maxLon)
         } catch (_: Exception) {
-            grid = null
+            null
+        }
+        if (result != null) {
+            grid = result
+            onGridLoading(false)
+        } else if (gridAttempt < MAX_TILE_ATTEMPTS) {
+            delay(1500)
+            gridAttempt++
+        } else {
+            onGridLoading(false)
         }
     }
 
@@ -717,6 +817,7 @@ private fun MapCanvas(
 @Composable
 private fun RadarTimeline(
     frames: MapTilesSequence?,
+    loading: Boolean,
     frameIndex: Int,
     playing: Boolean,
     onFrameIndex: (Int) -> Unit,
@@ -725,9 +826,9 @@ private fun RadarTimeline(
 ) {
     val count = frames?.frames?.size ?: 0
     Surface(color = Color.Black.copy(alpha = 0.55f), shape = RoundedCornerShape(24.dp), modifier = modifier) {
-        if (frames == null || count == 0) {
+        if (count == 0) {
             Text(
-                stringResource(R.string.map_radar_empty),
+                stringResource(if (loading) R.string.map_loading else R.string.map_radar_empty),
                 color = Color.White.copy(alpha = 0.8f),
                 style = MaterialTheme.typography.labelMedium,
                 modifier = Modifier.padding(horizontal = 16.dp, vertical = 12.dp),
@@ -736,7 +837,7 @@ private fun RadarTimeline(
             Column(Modifier.padding(horizontal = 12.dp, vertical = 6.dp)) {
                 Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(8.dp)) {
                     Text(
-                        frames.frames.getOrNull(frameIndex)?.let {
+                        frames?.frames?.getOrNull(frameIndex)?.let {
                             SimpleDateFormat("HH:mm", Locale.getDefault()).format(Date(it.timeMillis))
                         } ?: "",
                         color = Color.White,

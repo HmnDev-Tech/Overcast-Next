@@ -13,6 +13,7 @@ import android.graphics.Bitmap
 import android.graphics.BitmapFactory
 import android.util.LruCache
 import com.sameerasw.overcast.weather.provider.ProviderHttp
+import java.util.Locale
 import java.net.HttpURLConnection
 import java.net.URL
 import kotlinx.coroutines.Dispatchers
@@ -118,8 +119,8 @@ object WeatherMapRepository {
                 lons.add(minLon + (maxLon - minLon) * col / (GRID_COLS - 1.0))
             }
         }
-        val latParam = lats.joinToString(",") { "%.3f".format(it) }
-        val lonParam = lons.joinToString(",") { "%.3f".format(it) }
+        val latParam = lats.joinToString(",") { "%.3f".format(Locale.US, it) }
+        val lonParam = lons.joinToString(",") { "%.3f".format(Locale.US, it) }
         val url = "https://api.open-meteo.com/v1/forecast?latitude=$latParam&longitude=$lonParam" +
             "&current=temperature_2m&timezone=auto"
         val raw = try {

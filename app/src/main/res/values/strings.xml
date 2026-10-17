@@ -196,7 +196,7 @@
     <string name="allergen_level_very_high">Very high</string>
     <string name="allergen_unit">grains/m³</string>
     <string name="allergen_peak">Peak %1$s · %2$s</string>
-    <string name="allergen_empty">No pollen data for this location</string>
+    <string name="allergen_empty">No pollen data for this location right now</string>
     <string name="allergen_source">Pollen · Open-Meteo Air Quality</string>
     <string name="allergen_card_title">Allergen chart</string>
     <string name="weather_section_map">Weather map</string>
@@ -212,6 +212,10 @@
     <string name="map_play">Play</string>
     <string name="map_pause">Pause</string>
     <string name="map_radar_empty">No radar frames available</string>
+    <string name="map_satellite_empty">No satellite imagery available right now</string>
+    <string name="map_loading">Loading layer…</string>
+    <string name="map_zoom_in">Zoom in</string>
+    <string name="map_zoom_out">Zoom out</string>
     <string name="map_error">Map layer failed to load</string>
     <string name="map_legend_light">Light</string>
     <string name="map_legend_heavy">Heavy</string>

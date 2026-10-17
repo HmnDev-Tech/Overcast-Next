@@ -22,6 +22,7 @@ import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.shape.RoundedCornerShape
+import androidx.compose.material3.Button
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
 import androidx.compose.material3.LoadingIndicator
@@ -131,20 +132,30 @@ fun AllergenSection(palette: WeatherPalette, modifier: Modifier = Modifier) {
             }
             when {
                 loading -> LoadingIndicator(Modifier.size(48.dp))
-                error != null -> Text(
-                    error ?: stringResource(R.string.weather_error_unknown),
-                    color = palette.onBaseMuted,
-                    style = MaterialTheme.typography.bodyMedium,
-                )
+                error != null -> Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
+                    Text(
+                        error ?: stringResource(R.string.weather_error_unknown),
+                        color = palette.onBaseMuted,
+                        style = MaterialTheme.typography.bodyMedium,
+                    )
+                    Button(onClick = { load() }) {
+                        Text(stringResource(R.string.weather_refresh))
+                    }
+                }
                 data != null -> {
                     val current = data!!
                     val series = current.of(selected)
                     if (series == null || series.points.isEmpty()) {
-                        Text(
-                            stringResource(R.string.allergen_empty),
-                            color = palette.onBaseMuted,
-                            style = MaterialTheme.typography.bodyMedium,
-                        )
+                        Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
+                            Text(
+                                stringResource(R.string.allergen_empty),
+                                color = palette.onBaseMuted,
+                                style = MaterialTheme.typography.bodyMedium,
+                            )
+                            Button(onClick = { load() }) {
+                                Text(stringResource(R.string.weather_refresh))
+                            }
+                        }
                     } else {
                         val now = System.currentTimeMillis()
                         val live = series.valueAt(now)

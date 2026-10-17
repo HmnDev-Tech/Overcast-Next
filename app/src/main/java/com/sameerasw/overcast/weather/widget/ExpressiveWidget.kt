@@ -77,10 +77,16 @@ internal object ExpressiveWidgetAnimator {
         if (!SettingsRepository(app).isWidgetExpressiveAnimationEnabled()) return
         if (job?.isActive == true) return
         job = scope.launch {
-            for (step in 0..ANIM_STEPS) {
-                _progress.value = step / ANIM_STEPS.toFloat()
-                runCatching { ExpressiveWidget().updateAll(app) }
-                delay(ANIM_FRAME_MS)
+            try {
+                for (step in 0..ANIM_STEPS) {
+                    _progress.value = step / ANIM_STEPS.toFloat()
+                    runCatching { ExpressiveWidget().updateAll(app) }
+                    delay(ANIM_FRAME_MS)
+                }
+            } finally {
+                // Always finish at full progress so an interrupted run cannot leave the
+                // widget half faded in.
+                _progress.value = 1f
             }
         }
     }
