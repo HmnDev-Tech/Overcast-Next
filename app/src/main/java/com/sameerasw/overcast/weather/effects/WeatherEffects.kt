@@ -177,7 +177,7 @@ fun WeatherEffects(
     cover: () -> List<RainSurface> = surfaces,
     scrollTick: () -> Int = { 0 },
 ) {
-    if (CompatibilityMode.enabled.value) {
+    if (CompatibilityMode.stillEffects) {
         if (!spec.isEmpty) StillWeatherEffects(spec, modifier, strength, clearTop, cover, scrollTick)
         return
     }

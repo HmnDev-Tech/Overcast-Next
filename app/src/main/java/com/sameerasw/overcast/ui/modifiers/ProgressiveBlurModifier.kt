@@ -53,7 +53,7 @@ fun Modifier.progressiveBlur(
         val blurRadiusDp = with(density) { blurRadius.toDp() }
 
         val blurModifier =
-            if (blurRadius > 0f && !isPowerSave && !CompatibilityMode.enabled.value && EffectQuality.blurEnabled && Build.VERSION.SDK_INT >= Build.VERSION_CODES.S) {
+            if (blurRadius > 0f && !isPowerSave && !CompatibilityMode.noBlur && EffectQuality.blurEnabled && Build.VERSION.SDK_INT >= Build.VERSION_CODES.S) {
                 Modifier.blur {
                     this.edgeTreatment = edgeTreatment
                     val sizeHeightPx = size.height.toPx()
@@ -140,7 +140,7 @@ fun Modifier.progressiveBlur(
         val isPowerSave = remember(context) { DeviceUtils.isPowerSaveMode(context) }
 
         val blurModifier =
-            if (maxRadius > 0.dp && !isPowerSave && !CompatibilityMode.enabled.value && EffectQuality.blurEnabled && Build.VERSION.SDK_INT >= Build.VERSION_CODES.S) {
+            if (maxRadius > 0.dp && !isPowerSave && !CompatibilityMode.noBlur && EffectQuality.blurEnabled && Build.VERSION.SDK_INT >= Build.VERSION_CODES.S) {
                 Modifier.blur {
                     this.edgeTreatment = edgeTreatment
                     radius =

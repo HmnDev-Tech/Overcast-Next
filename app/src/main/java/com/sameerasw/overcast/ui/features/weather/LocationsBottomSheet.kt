@@ -43,6 +43,7 @@ import androidx.compose.ui.res.painterResource
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.unit.dp
 import com.sameerasw.overcast.R
+import com.sameerasw.overcast.weather.WeatherRepository
 import com.sameerasw.overcast.data.repository.SettingsRepository
 import com.sameerasw.overcast.ui.components.menus.SegmentedDropdownMenuItem
 import com.sameerasw.overcast.ui.core.cards.IconToggleItem
@@ -58,10 +59,45 @@ import com.sameerasw.overcast.weather.provider.ProviderHttp
 import com.sameerasw.overcast.weather.provider.WeatherProviderException
 import com.sameerasw.overcast.weather.provider.WeatherProviders
 import kotlinx.coroutines.CancellationException
+import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.launch
 
 private const val SEARCH_DEBOUNCE_MS = 400L
+
+@Composable
+fun LocationPickerSheet(
+    scope: CoroutineScope,
+    onDismissRequest: () -> Unit,
+    onTopChanged: (Float) -> Unit = {},
+) {
+    val context = LocalContext.current
+    val settings = remember { SettingsRepository(context) }
+    val requestLocation = rememberLocationPermissionRequest { granted ->
+        if (granted) scope.launch { WeatherRepository.refresh(context, force = true) }
+    }
+    LocationsBottomSheet(
+        onDismissRequest = onDismissRequest,
+        onSelectCurrent = {
+            settings.setWeatherLocationMode("device")
+            val permitted = DeviceLocationSource.hasPermission(context)
+            scope.launch {
+                WeatherRepository.clear(context)
+                if (permitted) WeatherRepository.refresh(context, force = true)
+            }
+            if (!permitted) requestLocation()
+        },
+        onSelectPlace = { place ->
+            settings.setWeatherManualLocation(place.latitude, place.longitude, place.name)
+            settings.setWeatherLocationMode("manual")
+            scope.launch {
+                WeatherRepository.clear(context)
+                WeatherRepository.refresh(context, force = true)
+            }
+        },
+        onTopChanged = onTopChanged,
+    )
+}
 
 @OptIn(ExperimentalMaterial3Api::class, ExperimentalMaterial3ExpressiveApi::class)
 @Composable

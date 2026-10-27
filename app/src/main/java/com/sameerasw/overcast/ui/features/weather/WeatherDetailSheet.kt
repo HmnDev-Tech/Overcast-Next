@@ -306,7 +306,7 @@ fun WeatherScreen(onOpenSettings: () -> Unit = {}) {
             effectsGo = true
         }
     }
-    val compatibility = CompatibilityMode.enabled.value
+    val compatibility = CompatibilityMode.reducedMotion
     val contentAlpha by animateFloatAsState(if (hasSnapshot) 1f else 0f, if (compatibility) snap() else tween(CONTENT_FADE_MS), label = "contentAlpha")
     val effectRamp by animateFloatAsState(if (effectsGo) 1f else 0f, if (compatibility) snap() else tween(EFFECTS_FADE_MS, easing = LinearOutSlowInEasing), label = "effectRamp")
 
@@ -341,25 +341,9 @@ fun WeatherScreen(onOpenSettings: () -> Unit = {}) {
     ) {
         CompositionLocalProvider(LocalRainSurfaces provides rainSurfaces, LocalWeatherIconStyle provides presentation.iconStyle) {
         if (showLocations) {
-            LocationsBottomSheet(
+            LocationPickerSheet(
+                scope = scope,
                 onDismissRequest = { showLocations = false },
-                onSelectCurrent = {
-                    settings.setWeatherLocationMode("device")
-                    val permitted = DeviceLocationSource.hasPermission(context)
-                    scope.launch {
-                        WeatherRepository.clear(context)
-                        if (permitted) WeatherRepository.refresh(context, force = true)
-                    }
-                    if (!permitted) requestLocation()
-                },
-                onSelectPlace = { place ->
-                    settings.setWeatherManualLocation(place.latitude, place.longitude, place.name)
-                    settings.setWeatherLocationMode("manual")
-                    scope.launch {
-                        WeatherRepository.clear(context)
-                        WeatherRepository.refresh(context, force = true)
-                    }
-                },
                 onTopChanged = { sheetTop.floatValue = it },
             )
         }
@@ -510,6 +494,17 @@ fun WeatherScreen(onOpenSettings: () -> Unit = {}) {
                             }
                         }
                         Spacer(Modifier.height(32.dp))
+                        FilledTonalButton(
+                            onClick = {
+                                HapticUtil.performVirtualKeyHaptic(view)
+                                showLocations = true
+                            },
+                        ) {
+                            Icon(painterResource(R.drawable.rounded_location_on_24), contentDescription = null, modifier = Modifier.size(18.dp))
+                            Spacer(Modifier.width(8.dp))
+                            Text(stringResource(R.string.weather_choose_location))
+                        }
+                        Spacer(Modifier.height(16.dp))
                         IconButton(
                             onClick = {
                                 HapticUtil.performVirtualKeyHaptic(view)

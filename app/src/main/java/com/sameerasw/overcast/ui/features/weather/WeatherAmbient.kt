@@ -175,7 +175,7 @@ internal fun AmbientWeatherScene(
             timeline.set(0f)
         }
     }
-    val animate = animateIntro && !CompatibilityMode.enabled.value
+    val animate = animateIntro && !CompatibilityMode.reducedMotion
     val intro = remember { Animatable(if (animate) 0f else 1f) }
     LaunchedEffect(animate) {
         if (animate) intro.animateTo(1f, tween(AMBIENT_INTRO_MS, easing = LinearEasing))

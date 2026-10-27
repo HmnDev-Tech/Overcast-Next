@@ -60,6 +60,7 @@ import com.sameerasw.overcast.ui.core.cards.ConfigPickerItem
 import com.sameerasw.overcast.ui.core.cards.IconToggleItem
 import com.sameerasw.overcast.ui.core.containers.RoundedCardContainer
 import com.sameerasw.overcast.ui.core.sheets.OvercastBottomSheet
+import com.sameerasw.overcast.utils.CompatibilityFeature
 import com.sameerasw.overcast.utils.HapticUtil
 import com.sameerasw.overcast.weather.DistanceUnit
 import com.sameerasw.overcast.weather.PrecipitationUnit
@@ -83,6 +84,14 @@ import kotlinx.coroutines.launch
 
 private val REFRESH_OPTIONS = listOf(30, 60, 120, 180, 360)
 
+private val COMPATIBILITY_OPTIONS = listOf(
+    Triple(CompatibilityFeature.STILL_EFFECTS, R.drawable.rounded_rainy_24, R.string.compat_still_effects),
+    Triple(CompatibilityFeature.NO_BLUR, R.drawable.rounded_blur_on_24, R.string.compat_no_blur),
+    Triple(CompatibilityFeature.NO_GLASS, R.drawable.rounded_water_drop_24, R.string.compat_no_glass),
+    Triple(CompatibilityFeature.NO_HEAT_HAZE, R.drawable.rounded_thermostat_24, R.string.compat_no_heat_haze),
+    Triple(CompatibilityFeature.REDUCED_MOTION, R.drawable.rounded_animation_24, R.string.compat_reduced_motion),
+)
+
 @OptIn(ExperimentalMaterial3Api::class, ExperimentalMaterial3ExpressiveApi::class)
 @Composable
 fun WeatherSettingsUI(
@@ -102,6 +111,7 @@ fun WeatherSettingsUI(
     var screensaverAutoAnimate by remember { mutableStateOf(settings.isScreensaverAutoAnimateEnabled()) }
     var unitsExpanded by remember { mutableStateOf(false) }
     var showCompatibilityInfo by remember { mutableStateOf(false) }
+    var showLocations by remember { mutableStateOf(false) }
     var effects by remember { mutableStateOf(settings.isWeatherEffectsEnabled()) }
     var weatherHaptics by remember { mutableStateOf(settings.isWeatherHapticsEnabled()) }
     var refreshMinutes by remember { mutableIntStateOf(settings.getWeatherRefreshMinutes()) }
@@ -121,6 +131,32 @@ fun WeatherSettingsUI(
     ) {
             SectionTitle(R.string.weather_section_source)
             RoundedCardContainer(spacing = 2.dp, cornerRadius = 24.dp) {
+                var locationTick by remember { mutableIntStateOf(0) }
+                val locationLabel = remember(locationTick) {
+                    settings.getWeatherManualLocation()?.third?.takeIf { settings.getWeatherLocationMode() == "manual" }
+                }
+                IconToggleItem(
+                    iconRes = R.drawable.rounded_location_on_24,
+                    title = stringResource(R.string.weather_choose_location),
+                    showToggle = false,
+                    onClick = { showLocations = true },
+                    trailingContent = {
+                        Text(
+                            text = locationLabel ?: stringResource(R.string.weather_location_device),
+                            style = MaterialTheme.typography.labelLarge,
+                            color = MaterialTheme.colorScheme.primary,
+                        )
+                    },
+                )
+                if (showLocations) {
+                    LocationPickerSheet(
+                        scope = scope,
+                        onDismissRequest = {
+                            showLocations = false
+                            locationTick++
+                        },
+                    )
+                }
                 ConfigPickerItem(
                     title = stringResource(R.string.weather_provider_title),
                     selectedValue = provider.displayName,
@@ -472,6 +508,23 @@ fun WeatherSettingsUI(
                         settings.setCompatibilityMode(it)
                     },
                 )
+                AnimatedVisibility(visible = compatibility) {
+                    Column(verticalArrangement = Arrangement.spacedBy(2.dp)) {
+                        COMPATIBILITY_OPTIONS.forEach { (feature, iconRes, titleRes) ->
+                            var checked by remember { mutableStateOf(settings.isCompatibilityFeatureEnabled(feature)) }
+                            IconToggleItem(
+                                iconRes = iconRes,
+                                title = stringResource(titleRes),
+                                isChecked = checked,
+                                onCheckedChange = {
+                                    HapticUtil.performVirtualKeyHaptic(view)
+                                    checked = it
+                                    settings.setCompatibilityFeatureEnabled(feature, it)
+                                },
+                            )
+                        }
+                    }
+                }
             }
 
             SectionTitle(R.string.weather_section_screensaver)

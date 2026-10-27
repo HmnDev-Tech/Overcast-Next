@@ -26,7 +26,7 @@ fun Modifier.rainOnGlass(intensity: Float, slant: Float, light: () -> Offset): M
     val level = animateFloatAsState(intensity.coerceIn(0f, 1f), tween(GLASS_FADE_MS), label = "glassIntensity")
     val lean = animateFloatAsState(slant, tween(GLASS_FADE_MS), label = "glassSlant")
     val visible by remember { derivedStateOf { level.value > 0.002f } }
-    if (Build.VERSION.SDK_INT < Build.VERSION_CODES.TIRAMISU || CompatibilityMode.enabled.value || !EffectQuality.glassEnabled || !visible) return this
+    if (Build.VERSION.SDK_INT < Build.VERSION_CODES.TIRAMISU || CompatibilityMode.noGlass || !EffectQuality.glassEnabled || !visible) return this
     return RainOnGlassApi33.apply(this, { level.value }, { lean.value }, LocalDensity.current.density, light)
 }
 

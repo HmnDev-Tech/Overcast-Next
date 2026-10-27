@@ -2,6 +2,7 @@ package com.sameerasw.overcast.data.repository
 
 import android.content.Context
 import android.content.SharedPreferences
+import com.sameerasw.overcast.utils.CompatibilityFeature
 import com.sameerasw.overcast.utils.CompatibilityMode
 import com.sameerasw.overcast.utils.DeviceUtils
 import com.sameerasw.overcast.weather.WeatherIconStyle
@@ -187,8 +188,20 @@ class SettingsRepository(
 
     fun setAmbientForecastEnabled(enabled: Boolean) = putBoolean(KEY_AMBIENT_FORECAST, enabled)
 
-    fun isCompatibilityMode(): Boolean =
-        if (prefs.contains(KEY_COMPATIBILITY_MODE)) getBoolean(KEY_COMPATIBILITY_MODE, false) else DeviceUtils.isLowEndDevice(appContext)
+    // The low-end check runs once; its result is stored so later launches keep whatever the user ends up with.
+    fun isCompatibilityMode(): Boolean {
+        if (prefs.contains(KEY_COMPATIBILITY_MODE)) return getBoolean(KEY_COMPATIBILITY_MODE, false)
+        val lowEnd = DeviceUtils.isLowEndDevice(appContext)
+        prefs.edit().putBoolean(KEY_COMPATIBILITY_MODE, lowEnd).apply()
+        return lowEnd
+    }
+
+    fun isCompatibilityFeatureEnabled(feature: CompatibilityFeature): Boolean = getBoolean(feature.key, true)
+
+    fun setCompatibilityFeatureEnabled(feature: CompatibilityFeature, enabled: Boolean) {
+        putBoolean(feature.key, enabled)
+        CompatibilityMode.setFeature(feature, enabled)
+    }
 
     fun setCompatibilityMode(enabled: Boolean) {
         putBoolean(KEY_COMPATIBILITY_MODE, enabled)
