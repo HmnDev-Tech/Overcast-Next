@@ -177,6 +177,15 @@
     <string name="weather_attribution_yandex">The data is provided by the Yandex Weather service.</string>
     <string name="aqi_title">Air quality</string>
     <string name="aqi_provider_title">Air quality provider</string>
+    <string name="radar_provider_title">Rain radar provider</string>
+    <string name="radar_title">Rain radar</string>
+    <string name="radar_status_ok">Radar is working</string>
+    <string name="radar_error_no_location">Couldn\'t get a location for the radar</string>
+    <string name="radar_error_missing_key">Add an OpenWeatherMap API key in the weather provider to use its radar</string>
+    <string name="radar_error_invalid_key">The OpenWeatherMap key was rejected. New keys can take a few hours to activate</string>
+    <string name="radar_error_rate_limited">Radar limit reached, try again later</string>
+    <string name="radar_error_network">Couldn\'t reach the radar service</string>
+    <string name="radar_error_unknown">Couldn\'t load the radar</string>
     <string name="aqi_good">Good</string>
     <string name="aqi_moderate">Moderate</string>
     <string name="aqi_sensitive">Unhealthy for sensitive groups</string>

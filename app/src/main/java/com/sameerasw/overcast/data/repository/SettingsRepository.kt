@@ -7,6 +7,7 @@ import com.sameerasw.overcast.utils.DeviceUtils
 import com.sameerasw.overcast.weather.WeatherIconStyle
 import com.sameerasw.overcast.weather.ai.AiProviders
 import com.sameerasw.overcast.weather.aqi.AqiProviders
+import com.sameerasw.overcast.weather.radar.RadarProviders
 import com.sameerasw.overcast.weather.effects.WeatherSimulation
 import com.sameerasw.overcast.weather.widget.WeatherWidgetUpdater
 import com.sameerasw.overcast.weather.effects.WeatherSimulationPreset
@@ -49,6 +50,7 @@ class SettingsRepository(
         const val KEY_AI_MODEL = "ai_model"
         const val KEY_AI_BASE_URL = "ai_base_url"
         const val KEY_AQI_PROVIDER = "aqi_provider"
+        const val KEY_RADAR_PROVIDER = "radar_provider"
         const val KEY_DEBUG_SIMULATED_WEATHER = "debug_simulated_weather"
         const val KEY_DEBUG_SIMULATED_ALERT = "debug_simulated_alert"
         const val KEY_DEBUG_SIMULATED_TIME = "debug_simulated_time"
@@ -223,4 +225,7 @@ class SettingsRepository(
 
     fun getAqiProvider(): String = getString(KEY_AQI_PROVIDER, AqiProviders.OPEN_METEO_ID) ?: AqiProviders.OPEN_METEO_ID
     fun setAqiProvider(id: String) = putString(KEY_AQI_PROVIDER, id)
+
+    fun getRadarProvider(): String = getString(KEY_RADAR_PROVIDER, RadarProviders.OFF_ID) ?: RadarProviders.OFF_ID
+    fun setRadarProvider(id: String) = putString(KEY_RADAR_PROVIDER, id)
 }

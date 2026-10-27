@@ -34,6 +34,7 @@ import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableIntStateOf
@@ -69,6 +70,10 @@ import com.sameerasw.overcast.weather.WeatherRepository
 import com.sameerasw.overcast.weather.WeatherUnits
 import com.sameerasw.overcast.weather.WindSpeedUnit
 import com.sameerasw.overcast.weather.aqi.AqiProviders
+import com.sameerasw.overcast.weather.radar.RadarException
+import com.sameerasw.overcast.weather.radar.RadarProviders
+import com.sameerasw.overcast.weather.radar.RadarRepository
+import com.sameerasw.overcast.weather.radar.RadarStatus
 import com.sameerasw.overcast.weather.model.WeatherError
 import com.sameerasw.overcast.weather.provider.OpenMeteoModels
 import com.sameerasw.overcast.weather.provider.WeatherProviders
@@ -248,6 +253,66 @@ fun WeatherSettingsUI(
                                 settings.setAqiProvider(id)
                             },
                         )
+                    }
+                }
+                var radarProviderId by remember { mutableStateOf(RadarProviders.resolve(settings.getRadarProvider())) }
+                ConfigPickerItem(
+                    title = stringResource(R.string.radar_provider_title),
+                    selectedValue = RadarProviders.all.first { it.first == radarProviderId }.second ?: offLabel,
+                    iconRes = R.drawable.rounded_radar_24,
+                    modifier = Modifier.fillMaxWidth(),
+                ) {
+                    RadarProviders.all.forEach { (id, name) ->
+                        SegmentedDropdownMenuItem(
+                            text = { Text(name ?: offLabel) },
+                            onClick = {
+                                radarProviderId = id
+                                settings.setRadarProvider(id)
+                                RadarRepository.clearStatus()
+                                if (id != RadarProviders.OFF_ID) {
+                                    scope.launch {
+                                        try {
+                                            RadarRepository.current(context)
+                                        } catch (_: RadarException) {
+                                        }
+                                    }
+                                }
+                            },
+                        )
+                    }
+                }
+                val radarStatus by RadarRepository.status.collectAsState()
+                LaunchedEffect(Unit) {
+                    if (radarProviderId != RadarProviders.OFF_ID && radarStatus == null) {
+                        try {
+                            RadarRepository.current(context)
+                        } catch (_: RadarException) {
+                        }
+                    }
+                }
+                AnimatedVisibility(visible = radarProviderId != RadarProviders.OFF_ID && radarStatus != null) {
+                    val shownStatus = remember { mutableStateOf(radarStatus) }
+                    if (radarStatus != null) shownStatus.value = radarStatus
+                    val failed = shownStatus.value as? RadarStatus.Failed
+                    val container = if (failed != null) MaterialTheme.colorScheme.errorContainer else MaterialTheme.colorScheme.secondaryContainer
+                    val content = if (failed != null) MaterialTheme.colorScheme.onErrorContainer else MaterialTheme.colorScheme.onSecondaryContainer
+                    Surface(color = container, shape = MaterialTheme.shapes.extraSmall, modifier = Modifier.fillMaxWidth()) {
+                        Row(
+                            modifier = Modifier.padding(16.dp),
+                            verticalAlignment = Alignment.CenterVertically,
+                            horizontalArrangement = Arrangement.spacedBy(12.dp),
+                        ) {
+                            Icon(
+                                painterResource(if (failed != null) R.drawable.rounded_warning_24 else R.drawable.rounded_check_24),
+                                contentDescription = null,
+                                tint = content,
+                            )
+                            Text(
+                                text = failed?.let { radarErrorText(context, it.error) } ?: stringResource(R.string.radar_status_ok),
+                                style = MaterialTheme.typography.bodyMedium,
+                                color = content,
+                            )
+                        }
                     }
                 }
                 ConfigPickerItem(
@@ -479,6 +544,17 @@ internal fun SectionTitle(res: Int) {
         modifier = Modifier.padding(start = 8.dp),
     )
 }
+
+private fun radarErrorText(context: Context, error: RadarException): String = context.getString(
+    when (error.reason) {
+        RadarException.Reason.NO_LOCATION -> R.string.radar_error_no_location
+        RadarException.Reason.MISSING_KEY -> R.string.radar_error_missing_key
+        RadarException.Reason.INVALID_KEY -> R.string.radar_error_invalid_key
+        RadarException.Reason.RATE_LIMITED -> R.string.radar_error_rate_limited
+        RadarException.Reason.NETWORK -> R.string.radar_error_network
+        RadarException.Reason.BAD_RESPONSE -> R.string.radar_error_unknown
+    },
+)
 
 private fun intervalLabel(context: Context, minutes: Int): String =
     if (minutes < 60) {
