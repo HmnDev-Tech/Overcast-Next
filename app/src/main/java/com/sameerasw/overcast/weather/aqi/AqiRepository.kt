@@ -13,8 +13,38 @@ data class AqiData(
     val pm10: Double?,
     val ozone: Double?,
     val no2: Double?,
+    val pollen: Map<PollenType, Double> = emptyMap(),
 ) {
     val category: AqiCategory get() = AqiCategory.from(aqi)
+}
+
+enum class PollenType(val field: String) {
+    ALDER("alder_pollen"),
+    BIRCH("birch_pollen"),
+    GRASS("grass_pollen"),
+    MUGWORT("mugwort_pollen"),
+    OLIVE("olive_pollen"),
+    RAGWEED("ragweed_pollen"),
+}
+
+// Grains per m³; shared thresholds across species keep the scale simple.
+enum class PollenLevel {
+    NONE,
+    LOW,
+    MODERATE,
+    HIGH,
+    VERY_HIGH,
+    ;
+
+    companion object {
+        fun from(grains: Double): PollenLevel = when {
+            grains < 1 -> NONE
+            grains < 10 -> LOW
+            grains < 50 -> MODERATE
+            grains < 200 -> HIGH
+            else -> VERY_HIGH
+        }
+    }
 }
 
 enum class AqiCategory {
@@ -65,7 +95,8 @@ object AqiRepository {
         val key = "$lat,$lon"
         last?.takeIf { !force && it.key == key && System.currentTimeMillis() - it.at < MAX_AGE_MS }?.let { return it.data }
         val url = "https://air-quality-api.open-meteo.com/v1/air-quality" +
-            "?latitude=$lat&longitude=$lon&current=us_aqi,pm2_5,pm10,ozone,nitrogen_dioxide&timezone=auto"
+            "?latitude=$lat&longitude=$lon&current=us_aqi,pm2_5,pm10,ozone,nitrogen_dioxide," +
+            PollenType.entries.joinToString(",") { it.field } + "&timezone=auto"
         val raw = try {
             ProviderHttp.get(url)
         } catch (e: Exception) {
@@ -82,6 +113,9 @@ object AqiRepository {
             pm10 = current.optDouble("pm10").takeIf { !it.isNaN() },
             ozone = current.optDouble("ozone").takeIf { !it.isNaN() },
             no2 = current.optDouble("nitrogen_dioxide").takeIf { !it.isNaN() },
+            pollen = PollenType.entries.mapNotNull { type ->
+                current.optDouble(type.field).takeIf { !it.isNaN() }?.let { type to it }
+            }.toMap(),
         )
         last = Cached(key, System.currentTimeMillis(), data)
         return data

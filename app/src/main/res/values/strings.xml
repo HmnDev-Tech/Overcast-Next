@@ -210,4 +210,15 @@
     <string name="compat_no_glass">Turn off rain on glass</string>
     <string name="compat_no_heat_haze">Turn off heat haze</string>
     <string name="compat_reduced_motion">Reduce animations</string>
+    <string name="pollen_title">Pollen</string>
+    <string name="pollen_alder">Alder</string>
+    <string name="pollen_birch">Birch</string>
+    <string name="pollen_grass">Grass</string>
+    <string name="pollen_mugwort">Mugwort</string>
+    <string name="pollen_olive">Olive</string>
+    <string name="pollen_ragweed">Ragweed</string>
+    <string name="pollen_level_none">None</string>
+    <string name="pollen_level_low">Low</string>
+    <string name="pollen_level_high">High</string>
+    <string name="pollen_level_very_high">Very high</string>
 </resources>
