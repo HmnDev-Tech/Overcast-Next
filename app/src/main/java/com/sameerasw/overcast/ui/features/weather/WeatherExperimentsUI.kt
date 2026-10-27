@@ -1,6 +1,10 @@
 package com.sameerasw.overcast.ui.features.weather
 
+import android.Manifest
+import android.os.Build
 import android.widget.Toast
+import androidx.activity.compose.rememberLauncherForActivityResult
+import androidx.activity.result.contract.ActivityResultContracts
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
@@ -21,7 +25,9 @@ import com.sameerasw.overcast.ui.core.cards.IconToggleItem
 import com.sameerasw.overcast.ui.core.containers.RoundedCardContainer
 import com.sameerasw.overcast.ui.core.pickers.SegmentedPicker
 import com.sameerasw.overcast.utils.HapticUtil
+import com.sameerasw.overcast.weather.WeatherRepository
 import com.sameerasw.overcast.weather.effects.WeatherSimulation
+import com.sameerasw.overcast.weather.notify.WeatherNotifications
 
 @Composable
 fun WeatherExperimentsUI(modifier: Modifier = Modifier) {
@@ -97,6 +103,28 @@ fun WeatherExperimentsUI(modifier: Modifier = Modifier) {
             },
             labelProvider = { if (it == "auto") context.getString(R.string.weather_sim_time_auto) else "$it°" },
             modifier = Modifier.fillMaxWidth(),
+        )
+        val sendSummary = {
+            val snapshot = WeatherRepository.state.value.snapshot
+            val message = when {
+                snapshot == null -> R.string.dev_notification_no_weather
+                WeatherNotifications.postSummary(context, snapshot) -> R.string.dev_notification_sent
+                else -> R.string.dev_notification_blocked
+            }
+            Toast.makeText(context, message, Toast.LENGTH_SHORT).show()
+        }
+        val notificationPermission = rememberLauncherForActivityResult(ActivityResultContracts.RequestPermission()) { sendSummary() }
+        IconToggleItem(
+            iconRes = R.drawable.rounded_notifications_24,
+            title = stringResource(R.string.dev_send_notification),
+            showToggle = false,
+            onClick = {
+                if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU && !WeatherNotifications.canPost(context)) {
+                    notificationPermission.launch(Manifest.permission.POST_NOTIFICATIONS)
+                } else {
+                    sendSummary()
+                }
+            },
         )
         IconToggleItem(
             iconRes = R.drawable.rounded_history_24,

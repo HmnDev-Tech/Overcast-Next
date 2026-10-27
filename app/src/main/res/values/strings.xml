@@ -301,4 +301,8 @@
     <string name="nowcast_now">Now</string>
     <string name="nowcast_hour">1 h</string>
     <string name="nowcast_two_hours">2 h</string>
+    <string name="dev_send_notification">Send notification now</string>
+    <string name="dev_notification_sent">Notification sent</string>
+    <string name="dev_notification_blocked">Notifications are blocked for Overcast</string>
+    <string name="dev_notification_no_weather">No weather loaded yet</string>
 </resources>

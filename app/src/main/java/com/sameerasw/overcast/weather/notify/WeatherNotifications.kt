@@ -7,6 +7,7 @@ import android.app.PendingIntent
 import android.content.Context
 import android.content.Intent
 import android.content.pm.PackageManager
+import android.graphics.Bitmap
 import android.os.Build
 import androidx.core.app.NotificationCompat
 import androidx.core.app.NotificationManagerCompat
@@ -53,8 +54,8 @@ object WeatherNotifications {
         )
     }
 
-    private fun post(context: Context, channel: String, id: Int, title: String, text: String) {
-        if (!canPost(context)) return
+    private fun post(context: Context, channel: String, id: Int, title: String, text: String, picture: Bitmap? = null): Boolean {
+        if (!canPost(context)) return false
         ensureChannels(context)
         val open = PendingIntent.getActivity(
             context,
@@ -66,13 +67,21 @@ object WeatherNotifications {
             .setSmallIcon(R.drawable.rounded_cloud_24)
             .setContentTitle(title)
             .setContentText(text)
-            .setStyle(NotificationCompat.BigTextStyle().bigText(text))
+            .setStyle(
+                if (picture != null) {
+                    NotificationCompat.BigPictureStyle().bigPicture(picture).setSummaryText(text)
+                } else {
+                    NotificationCompat.BigTextStyle().bigText(text)
+                },
+            )
             .setContentIntent(open)
             .setAutoCancel(true)
             .build()
-        try {
+        return try {
             NotificationManagerCompat.from(context).notify(id, notification)
+            true
         } catch (_: SecurityException) {
+            false
         }
     }
 
@@ -97,7 +106,7 @@ object WeatherNotifications {
         work.enqueueUniquePeriodicWork(SUMMARY_WORK, ExistingPeriodicWorkPolicy.UPDATE, request)
     }
 
-    internal fun postSummary(context: Context, snapshot: WeatherSnapshot) {
+    fun postSummary(context: Context, snapshot: WeatherSnapshot): Boolean {
         val units = WeatherUnits.from(SettingsRepository(context))
         val now = System.currentTimeMillis()
         val rainFrom = snapshot.upcomingHours(now).firstOrNull { it.chanceOfRain >= RAIN_CHANCE && isToday(it.timeMillis, now) }
@@ -106,7 +115,15 @@ object WeatherNotifications {
             add(snapshot.conditionText)
             rainFrom?.let { add(context.getString(R.string.notify_rain_from, DateFormat.getTimeInstance(DateFormat.SHORT).format(Date(it.timeMillis)))) }
         }
-        post(context, CHANNEL_SUMMARY, ID_SUMMARY, context.getString(R.string.notify_summary_title, snapshot.locationName), parts.joinToString(" · "))
+        val picture = runCatching { DayPreviewRenderer.render(context, snapshot, now) }.getOrNull()
+        return post(
+            context,
+            CHANNEL_SUMMARY,
+            ID_SUMMARY,
+            context.getString(R.string.notify_summary_title, snapshot.locationName),
+            parts.joinToString(" · "),
+            picture,
+        )
     }
 
     // Runs after every refresh; prefers the 15-minute nowcast and falls back to the next hour's rain chance.
