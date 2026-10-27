@@ -64,7 +64,7 @@
     <string name="weather_location_device">Current location</string>
     <string name="weather_model_title">Forecast model</string>
     <string name="weather_not_loaded">Not loaded yet</string>
-    <string name="weather_provider_title">Provider</string>
+    <string name="weather_provider_title">Weather provider</string>
     <string name="weather_refresh_interval_title">Refresh every</string>
     <string name="weather_search_city">Search for a city</string>
     <string name="weather_search_no_results">No cities found</string>
@@ -175,4 +175,27 @@
     <string name="dev_reset_welcome_done">Welcome will show again on next launch</string>
     <!-- Required by the Yandex Weather terms (point 2.4); keep the wording. -->
     <string name="weather_attribution_yandex">The data is provided by the Yandex Weather service.</string>
+    <string name="aqi_title">Air quality</string>
+    <string name="aqi_provider_title">Air quality provider</string>
+    <string name="aqi_good">Good</string>
+    <string name="aqi_moderate">Moderate</string>
+    <string name="aqi_sensitive">Unhealthy for sensitive groups</string>
+    <string name="aqi_unhealthy">Unhealthy</string>
+    <string name="aqi_very_unhealthy">Very unhealthy</string>
+    <string name="aqi_hazardous">Hazardous</string>
+    <string name="ai_section_title">Weather advice</string>
+    <string name="ai_provider_title">AI provider</string>
+    <string name="ai_model_title">Model</string>
+    <string name="ai_base_url_title">API base URL</string>
+    <string name="ai_advanced_title">Advanced</string>
+    <string name="ai_error_invalid_key">The AI key was rejected</string>
+    <string name="ai_error_rate_limited">AI limit reached, try again later</string>
+    <string name="ai_error_network">Couldn\'t reach the AI service</string>
+    <string name="ai_error_unknown">Couldn\'t get advice</string>
+    <string name="ai_error_model">Model not found</string>
+    <string name="ai_error_unsupported">On-device AI isn\'t available on this device</string>
+    <string name="ai_error_download">Couldn\'t download the on-device model</string>
+    <string name="ai_provider_on_device">On-device</string>
+    <string name="ai_error_unavailable">The AI service is busy, try again later</string>
+    <string name="aqi_error">Couldn\'t load air quality</string>
 </resources>
