@@ -10,12 +10,14 @@ import androidx.work.WorkManager
 import androidx.work.WorkerParameters
 import com.sameerasw.overcast.data.repository.SettingsRepository
 import com.sameerasw.overcast.weather.WeatherRepository
+import com.sameerasw.overcast.weather.notify.WeatherNotifications
 import com.sameerasw.overcast.weather.provider.WeatherProviders
 import java.util.concurrent.TimeUnit
 
 class WeatherRefreshWorker(context: Context, params: WorkerParameters) : CoroutineWorker(context, params) {
     override suspend fun doWork(): Result {
         WeatherRepository.refresh(applicationContext)
+        WeatherRepository.state.value.snapshot?.let { WeatherNotifications.checkRainSoon(applicationContext, it) }
         return Result.success()
     }
 }

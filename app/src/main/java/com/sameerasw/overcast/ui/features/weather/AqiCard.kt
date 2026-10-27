@@ -11,11 +11,15 @@ import androidx.compose.animation.expandVertically
 import androidx.compose.animation.fadeIn
 import androidx.compose.animation.fadeOut
 import androidx.compose.animation.shrinkVertically
+import androidx.compose.foundation.background
+import androidx.compose.foundation.shape.CircleShape
+import androidx.compose.ui.draw.clip
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.fillMaxWidth
+import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
@@ -58,8 +62,11 @@ import com.sameerasw.overcast.R
 import com.sameerasw.overcast.data.repository.SettingsRepository
 import com.sameerasw.overcast.utils.HapticUtil
 import com.sameerasw.overcast.weather.aqi.AqiCategory
+import com.sameerasw.overcast.weather.aqi.AqiHour
 import com.sameerasw.overcast.weather.aqi.AqiProviders
 import com.sameerasw.overcast.weather.aqi.AqiRepository
+import com.sameerasw.overcast.weather.aqi.PollenLevel
+import com.sameerasw.overcast.weather.aqi.PollenType
 import com.sameerasw.overcast.weather.model.WeatherSnapshot
 import kotlinx.coroutines.CancellationException
 
@@ -112,7 +119,7 @@ fun AqiSection(snapshot: WeatherSnapshot, palette: WeatherPalette, modifier: Mod
         Surface(
             color = palette.card,
             shape = MaterialTheme.shapes.extraLarge,
-            modifier = Modifier.fillMaxWidth(),
+            modifier = Modifier.rainSurface("aqi").fillMaxWidth(),
         ) {
             Column(
                 Modifier
@@ -181,8 +188,14 @@ fun AqiSection(snapshot: WeatherSnapshot, palette: WeatherPalette, modifier: Mod
                             aqi.pm10?.let { Pollutant("PM10", it, palette) }
                             aqi.ozone?.let { Pollutant("O₃", it, palette) }
                             aqi.no2?.let { Pollutant("NO₂", it, palette) }
+                            aqi.so2?.let { Pollutant("SO₂", it, palette) }
+                            aqi.co?.let { Pollutant("CO", it, palette) }
+                            aqi.dust?.takeIf { it > 0 }?.let { Pollutant(stringResource(R.string.aqi_dust), it, palette) }
+                            aqi.euAqi?.let { Pollutant(stringResource(R.string.aqi_european), it.toDouble(), palette, unit = "") }
                         }
                     }
+                    if (aqi.forecast.size > 1) AqiForecastStrip(aqi.forecast, palette)
+                    if (aqi.pollen.isNotEmpty()) PollenSection(aqi.pollen, palette)
                 }
                 if (failed && data == null) {
                     Text(
@@ -234,7 +247,103 @@ private fun AqiBadge(aqi: Int?, color: Color) {
 }
 
 @Composable
-private fun Pollutant(name: String, value: Double, palette: WeatherPalette) {
+private fun AqiForecastStrip(forecast: List<AqiHour>, palette: WeatherPalette) {
+    val context = LocalContext.current
+    Row(
+        Modifier.fillMaxWidth().height(64.dp),
+        horizontalArrangement = Arrangement.spacedBy(4.dp),
+        verticalAlignment = Alignment.Bottom,
+    ) {
+        forecast.forEachIndexed { index, hour ->
+            Column(Modifier.weight(1f), horizontalAlignment = Alignment.CenterHorizontally) {
+                val fraction = (hour.aqi / AQI_SCALE_MAX).coerceIn(0.08f, 1f)
+                Box(
+                    Modifier
+                        .fillMaxWidth()
+                        .height(40.dp * fraction)
+                        .clip(CircleShape)
+                        .background(aqiColor(AqiCategory.from(hour.aqi))),
+                )
+                Text(
+                    if (index % 3 == 0) formatHour(context, hour.timeMillis) else "",
+                    color = palette.onBaseMuted,
+                    style = MaterialTheme.typography.labelSmall,
+                    maxLines = 1,
+                    softWrap = false,
+                    modifier = Modifier.padding(top = 4.dp),
+                )
+            }
+        }
+    }
+}
+
+@Composable
+private fun PollenSection(pollen: Map<PollenType, Double>, palette: WeatherPalette) {
+    Column(verticalArrangement = Arrangement.spacedBy(10.dp)) {
+        Text(
+            stringResource(R.string.pollen_title),
+            color = palette.onBaseMuted,
+            style = MaterialTheme.typography.titleSmall,
+        )
+        pollen.entries.chunked(2).forEach { pair ->
+            Row(horizontalArrangement = Arrangement.spacedBy(16.dp)) {
+                pair.forEach { (type, grains) ->
+                    val level = PollenLevel.from(grains)
+                    Row(Modifier.weight(1f), verticalAlignment = Alignment.CenterVertically) {
+                        Box(
+                            Modifier
+                                .size(8.dp)
+                                .clip(CircleShape)
+                                .background(pollenColor(level)),
+                        )
+                        Text(
+                            stringResource(pollenName(type)),
+                            color = palette.onBase,
+                            style = MaterialTheme.typography.labelLarge,
+                            modifier = Modifier
+                                .padding(start = 8.dp)
+                                .weight(1f),
+                        )
+                        Text(
+                            stringResource(pollenLabel(level)),
+                            color = pollenColor(level),
+                            style = MaterialTheme.typography.labelMedium,
+                        )
+                    }
+                }
+                if (pair.size == 1) Box(Modifier.weight(1f))
+            }
+        }
+    }
+}
+
+private fun pollenName(type: PollenType): Int = when (type) {
+    PollenType.ALDER -> R.string.pollen_alder
+    PollenType.BIRCH -> R.string.pollen_birch
+    PollenType.GRASS -> R.string.pollen_grass
+    PollenType.MUGWORT -> R.string.pollen_mugwort
+    PollenType.OLIVE -> R.string.pollen_olive
+    PollenType.RAGWEED -> R.string.pollen_ragweed
+}
+
+private fun pollenLabel(level: PollenLevel): Int = when (level) {
+    PollenLevel.NONE -> R.string.pollen_level_none
+    PollenLevel.LOW -> R.string.pollen_level_low
+    PollenLevel.MODERATE -> R.string.aqi_moderate
+    PollenLevel.HIGH -> R.string.pollen_level_high
+    PollenLevel.VERY_HIGH -> R.string.pollen_level_very_high
+}
+
+private fun pollenColor(level: PollenLevel): Color = when (level) {
+    PollenLevel.NONE -> Color(0xFF9AA0A6)
+    PollenLevel.LOW -> Color(0xFF7ED491)
+    PollenLevel.MODERATE -> Color(0xFFFFD166)
+    PollenLevel.HIGH -> Color(0xFFFF9E5E)
+    PollenLevel.VERY_HIGH -> Color(0xFFFF6B6B)
+}
+
+@Composable
+private fun Pollutant(name: String, value: Double, palette: WeatherPalette, unit: String = " µg/m³") {
     Row(verticalAlignment = Alignment.CenterVertically) {
         Text(
             name,
@@ -248,7 +357,7 @@ private fun Pollutant(name: String, value: Double, palette: WeatherPalette) {
             style = MaterialTheme.typography.titleMedium,
         )
         Text(
-            " µg/m³",
+            unit,
             color = palette.onBaseMuted,
             style = MaterialTheme.typography.labelSmall,
         )

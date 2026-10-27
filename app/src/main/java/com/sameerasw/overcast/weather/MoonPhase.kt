@@ -9,7 +9,7 @@ import kotlin.math.cos
 import kotlin.math.roundToInt
 
 object MoonPhase {
-    private const val SYNODIC_DAYS = 29.530588853
+    const val SYNODIC_DAYS = 29.530588853
     private const val SYNODIC_MS = SYNODIC_DAYS * 24 * 60 * 60_000.0
     private const val REFERENCE_NEW_MOON_MS = 947_182_440_000.0
 

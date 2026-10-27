@@ -1,5 +1,6 @@
 package com.sameerasw.overcast.ui.features.weather
 
+import androidx.compose.runtime.mutableStateMapOf
 import android.content.Context
 import com.sameerasw.overcast.weather.effects.WeatherEffectHaptics
 import androidx.compose.runtime.mutableIntStateOf
@@ -36,6 +37,7 @@ import androidx.compose.ui.platform.LocalDensity
 import android.text.format.DateFormat
 import android.text.format.DateUtils
 import androidx.compose.foundation.background
+import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
@@ -150,6 +152,10 @@ import com.sameerasw.overcast.weather.TemperatureUnit
 import com.sameerasw.overcast.weather.WeatherDetailSlot
 import com.sameerasw.overcast.weather.WeatherIconStyle
 import com.sameerasw.overcast.weather.WeatherUnits
+import com.sameerasw.overcast.weather.location.WeatherPlace
+import androidx.compose.ui.res.pluralStringResource
+import com.sameerasw.overcast.weather.SolarTimes
+import com.sameerasw.overcast.weather.model.HourlyForecast
 import com.sameerasw.overcast.weather.model.WeatherAlert
 import com.sameerasw.overcast.weather.model.WeatherError
 import com.sameerasw.overcast.weather.model.WeatherSnapshot
@@ -171,6 +177,7 @@ import kotlinx.coroutines.launch
 import java.text.SimpleDateFormat
 import java.util.Date
 import java.util.Locale
+import kotlin.math.abs
 import kotlin.math.roundToInt
 import android.content.SharedPreferences
 import androidx.compose.foundation.Canvas
@@ -286,6 +293,20 @@ fun WeatherScreen(onOpenSettings: () -> Unit = {}) {
     val effectSpec = presentation.effectSpec
     val effectHaptics = presentation.haptics
     val advice = rememberAiAdvice(state.snapshot, units)
+    val visibleSections = rememberVisibleSections()
+    fun selectPlace(place: WeatherPlace) {
+        settings.setWeatherManualLocation(place.latitude, place.longitude, place.name)
+        settings.setWeatherLocationMode("manual")
+        scope.launch {
+            WeatherRepository.clear(context)
+            WeatherRepository.refresh(context, force = true)
+        }
+    }
+    val sectionHeights = remember { mutableStateMapOf<MainSection, Int>() }
+    val leftFixedBottom = remember { mutableIntStateOf(0) }
+    val rightFixedBottom = remember { mutableIntStateOf(0) }
+    val footerHeight = remember { mutableIntStateOf(0) }
+    val placesHeight = remember { mutableIntStateOf(0) }
 
     val requestLocation = rememberLocationPermissionRequest { granted ->
         if (granted) scope.launch { WeatherRepository.refresh(context, force = true) }
@@ -306,7 +327,7 @@ fun WeatherScreen(onOpenSettings: () -> Unit = {}) {
             effectsGo = true
         }
     }
-    val compatibility = CompatibilityMode.enabled.value
+    val compatibility = CompatibilityMode.reducedMotion
     val contentAlpha by animateFloatAsState(if (hasSnapshot) 1f else 0f, if (compatibility) snap() else tween(CONTENT_FADE_MS), label = "contentAlpha")
     val effectRamp by animateFloatAsState(if (effectsGo) 1f else 0f, if (compatibility) snap() else tween(EFFECTS_FADE_MS, easing = LinearOutSlowInEasing), label = "effectRamp")
 
@@ -341,25 +362,9 @@ fun WeatherScreen(onOpenSettings: () -> Unit = {}) {
     ) {
         CompositionLocalProvider(LocalRainSurfaces provides rainSurfaces, LocalWeatherIconStyle provides presentation.iconStyle) {
         if (showLocations) {
-            LocationsBottomSheet(
+            LocationPickerSheet(
+                scope = scope,
                 onDismissRequest = { showLocations = false },
-                onSelectCurrent = {
-                    settings.setWeatherLocationMode("device")
-                    val permitted = DeviceLocationSource.hasPermission(context)
-                    scope.launch {
-                        WeatherRepository.clear(context)
-                        if (permitted) WeatherRepository.refresh(context, force = true)
-                    }
-                    if (!permitted) requestLocation()
-                },
-                onSelectPlace = { place ->
-                    settings.setWeatherManualLocation(place.latitude, place.longitude, place.name)
-                    settings.setWeatherLocationMode("manual")
-                    scope.launch {
-                        WeatherRepository.clear(context)
-                        WeatherRepository.refresh(context, force = true)
-                    }
-                },
                 onTopChanged = { sheetTop.floatValue = it },
             )
         }
@@ -510,6 +515,17 @@ fun WeatherScreen(onOpenSettings: () -> Unit = {}) {
                             }
                         }
                         Spacer(Modifier.height(32.dp))
+                        FilledTonalButton(
+                            onClick = {
+                                HapticUtil.performVirtualKeyHaptic(view)
+                                showLocations = true
+                            },
+                        ) {
+                            Icon(painterResource(R.drawable.rounded_location_on_24), contentDescription = null, modifier = Modifier.size(18.dp))
+                            Spacer(Modifier.width(8.dp))
+                            Text(stringResource(R.string.weather_choose_location))
+                        }
+                        Spacer(Modifier.height(16.dp))
                         IconButton(
                             onClick = {
                                 HapticUtil.performVirtualKeyHaptic(view)
@@ -569,12 +585,23 @@ fun WeatherScreen(onOpenSettings: () -> Unit = {}) {
                                         verticalArrangement = Arrangement.spacedBy(20.dp),
                                     ) {
                                         AlertsSection(snapshot.activeAlerts().sortedByDescending { it.severity.ordinal }, palette)
-                                        HourlySection(snapshot, units.temperature, palette)
+                                        NowcastBanner(snapshot, palette, Modifier.padding(horizontal = SIDE_PADDING))
+                                        ChangesBanner(units, palette, Modifier.padding(horizontal = SIDE_PADDING))
+                                        HourlySection(snapshot, units.temperature, palette, units = units)
+                                        if (MainSection.TREND in visibleSections) TrendSection(snapshot, units, palette, Modifier.padding(horizontal = SIDE_PADDING))
                                         snapshot.upcomingDays().takeIf { it.isNotEmpty() }
-                                            ?.let { DailySection(it, units.temperature, palette, Modifier.padding(horizontal = SIDE_PADDING)) }
-                                        DetailsSection(snapshot, units, palette, Modifier.padding(horizontal = SIDE_PADDING))
-                                        AqiSection(state.snapshot ?: snapshot, palette, Modifier.padding(horizontal = SIDE_PADDING))
-                                        SunSection(snapshot, palette, Modifier.padding(horizontal = SIDE_PADDING))
+                                            ?.let { DailySection(it, units, palette, Modifier.padding(horizontal = SIDE_PADDING)) }
+                                        if (MainSection.DETAILS in visibleSections) DetailsSection(snapshot, units, palette, Modifier.padding(horizontal = SIDE_PADDING))
+                                        if (MainSection.WIND in visibleSections) WindSection(snapshot, units, palette, Modifier.padding(horizontal = SIDE_PADDING))
+                                        if (MainSection.ACTIVITIES in visibleSections) ActivitySection(snapshot, palette, Modifier.padding(horizontal = SIDE_PADDING))
+                                        if (MainSection.INSIGHTS in visibleSections) InsightsSection(state.snapshot ?: snapshot, units, palette, Modifier.padding(horizontal = SIDE_PADDING))
+                                        if (MainSection.RADAR in visibleSections) RadarSection(state.snapshot ?: snapshot, palette, Modifier.padding(horizontal = SIDE_PADDING))
+                                        if (MainSection.AIR_QUALITY in visibleSections) AqiSection(state.snapshot ?: snapshot, palette, Modifier.padding(horizontal = SIDE_PADDING))
+                                        if (MainSection.MARINE in visibleSections) MarineSection(state.snapshot ?: snapshot, units, palette, Modifier.padding(horizontal = SIDE_PADDING))
+                                        if (MainSection.RIVER in visibleSections) RiverSection(state.snapshot ?: snapshot, palette, Modifier.padding(horizontal = SIDE_PADDING))
+                                        if (MainSection.HISTORY in visibleSections) HistorySection(state.snapshot ?: snapshot, units, palette, Modifier.padding(horizontal = SIDE_PADDING))
+                                        if (MainSection.SUN in visibleSections) SunSection(snapshot, palette, Modifier.padding(horizontal = SIDE_PADDING))
+                                        if (MainSection.PLACES in visibleSections) PlacesSection(snapshot, units, palette, ::selectPlace, Modifier.padding(horizontal = SIDE_PADDING))
                                         Footer(
                                             modifier = Modifier.padding(horizontal = SIDE_PADDING).rainSurface("footer"),
                                             snapshot = snapshot,
@@ -596,17 +623,64 @@ fun WeatherScreen(onOpenSettings: () -> Unit = {}) {
                                             .navigationBarsPadding()
                                             .padding(bottom = if (advice != null) 96.dp else 40.dp),
                                     ) {
+                                        val gapPx = with(density) { 20.dp.roundToPx() }
+                                        val slackPx = with(density) { 48.dp.roundToPx() }
+                                        val placedLeft = remember { HashMap<MainSection, Boolean>() }
+                                        val floatingSections = BALANCED_SECTIONS.filter { it in visibleSections }
+                                        var left = leftFixedBottom.intValue
+                                        var right = rightFixedBottom.intValue + footerHeight.intValue + gapPx +
+                                            (if (MainSection.PLACES in visibleSections) placesHeight.intValue else 0)
+                                        val leftSections = mutableListOf<MainSection>()
+                                        val rightSections = mutableListOf<MainSection>()
+                                        // Greedy fill of the shorter column; the slack keeps a card where it is when the columns are nearly level.
+                                        floatingSections.forEach { section ->
+                                            val height = sectionHeights[section] ?: 0
+                                            val previous = placedLeft[section]
+                                            val goLeft = if (previous != null && abs(left - right) < slackPx) previous else left <= right
+                                            placedLeft[section] = goLeft
+                                            if (goLeft) {
+                                                leftSections += section
+                                                left += height
+                                            } else {
+                                                rightSections += section
+                                                right += height
+                                            }
+                                        }
+                                        val balancedSection: @Composable (MainSection) -> Unit = { section ->
+                                            Box(Modifier.onSizeChanged { sectionHeights[section] = it.height }) {
+                                                val sectionModifier = Modifier.padding(top = 20.dp).padding(horizontal = SIDE_PADDING)
+                                                val live = state.snapshot ?: snapshot
+                                                when (section) {
+                                                    MainSection.SUN -> SunSection(snapshot, palette, sectionModifier)
+                                                    MainSection.WIND -> WindSection(snapshot, units, palette, sectionModifier)
+                                                    MainSection.HISTORY -> HistorySection(live, units, palette, sectionModifier)
+                                                    MainSection.ACTIVITIES -> ActivitySection(snapshot, palette, sectionModifier)
+                                                    MainSection.INSIGHTS -> InsightsSection(live, units, palette, sectionModifier)
+                                                    MainSection.RADAR -> RadarSection(live, palette, sectionModifier)
+                                                    MainSection.AIR_QUALITY -> AqiSection(live, palette, sectionModifier)
+                                                    MainSection.MARINE -> MarineSection(live, units, palette, sectionModifier)
+                                                    MainSection.RIVER -> RiverSection(live, palette, sectionModifier)
+                                                    else -> Unit
+                                                }
+                                            }
+                                        }
                                         Row(Modifier.fillMaxWidth()) {
                                             Column(
                                                 Modifier
                                                     .weight(leftFraction)
                                                     .padding(top = with(density) { topPx.toDp() } + 28.dp),
-                                                verticalArrangement = Arrangement.spacedBy(20.dp),
                                             ) {
-                                            AlertsSection(snapshot.activeAlerts().sortedByDescending { it.severity.ordinal }, palette)
-                                            snapshot.upcomingDays().takeIf { it.isNotEmpty() }
-                                                ?.let { DailySection(it, units.temperature, palette, Modifier.padding(horizontal = SIDE_PADDING)) }
-                                            SunSection(snapshot, palette, Modifier.padding(horizontal = SIDE_PADDING))
+                                                Column(
+                                                    Modifier.onGloballyPositioned { leftFixedBottom.intValue = (it.positionInRoot().y + it.size.height).roundToInt() },
+                                                    verticalArrangement = Arrangement.spacedBy(20.dp),
+                                                ) {
+                                                    AlertsSection(snapshot.activeAlerts().sortedByDescending { it.severity.ordinal }, palette)
+                                                    NowcastBanner(snapshot, palette, Modifier.padding(horizontal = SIDE_PADDING))
+                                                    ChangesBanner(units, palette, Modifier.padding(horizontal = SIDE_PADDING))
+                                                    snapshot.upcomingDays().takeIf { it.isNotEmpty() }
+                                                        ?.let { DailySection(it, units, palette, Modifier.padding(horizontal = SIDE_PADDING)) }
+                                                }
+                                                leftSections.forEach { section -> key(section) { balancedSection(section) } }
                                             }
                                             if (hingeFraction > 0f) Spacer(Modifier.weight(hingeFraction))
                                             Column(
@@ -614,23 +688,35 @@ fun WeatherScreen(onOpenSettings: () -> Unit = {}) {
                                                     .weight((1f - leftFraction - hingeFraction).coerceAtLeast(0.05f))
                                                     .statusBarsPadding()
                                                     .padding(top = 28.dp),
-                                                verticalArrangement = Arrangement.spacedBy(20.dp),
                                             ) {
-                                            HourlySection(snapshot, units.temperature, palette)
-                                            DetailsSection(snapshot, units, palette, Modifier.padding(horizontal = SIDE_PADDING))
-                                            AqiSection(state.snapshot ?: snapshot, palette, Modifier.padding(horizontal = SIDE_PADDING))
-                                            Footer(
-                                                modifier = Modifier.padding(horizontal = SIDE_PADDING).rainSurface("footer"),
-                                                snapshot = snapshot,
-                                                error = state.error,
-                                                palette = palette,
-                                                refreshing = state.loading,
-                                                onRefresh = {
-                                                    HapticUtil.performVirtualKeyHaptic(view)
-                                                    scope.launch { WeatherRepository.refresh(context, force = true) }
-                                                },
-                                                onOpenSettings = onOpenSettings,
-                                            )
+                                                Column(
+                                                    Modifier.onGloballyPositioned { rightFixedBottom.intValue = (it.positionInRoot().y + it.size.height).roundToInt() },
+                                                    verticalArrangement = Arrangement.spacedBy(20.dp),
+                                                ) {
+                                                    HourlySection(snapshot, units.temperature, palette, units = units)
+                                                    if (MainSection.TREND in visibleSections) TrendSection(snapshot, units, palette, Modifier.padding(horizontal = SIDE_PADDING))
+                                                    if (MainSection.DETAILS in visibleSections) DetailsSection(snapshot, units, palette, Modifier.padding(horizontal = SIDE_PADDING))
+                                                }
+                                                rightSections.forEach { section -> key(section) { balancedSection(section) } }
+                                                if (MainSection.PLACES in visibleSections) {
+                                                    PlacesSection(snapshot, units, palette, ::selectPlace, Modifier.onSizeChanged { placesHeight.intValue = it.height }.padding(top = 20.dp).padding(horizontal = SIDE_PADDING))
+                                                }
+                                                Footer(
+                                                    modifier = Modifier
+                                                        .padding(top = 20.dp)
+                                                        .onSizeChanged { footerHeight.intValue = it.height }
+                                                        .padding(horizontal = SIDE_PADDING)
+                                                        .rainSurface("footer"),
+                                                    snapshot = snapshot,
+                                                    error = state.error,
+                                                    palette = palette,
+                                                    refreshing = state.loading,
+                                                    onRefresh = {
+                                                        HapticUtil.performVirtualKeyHaptic(view)
+                                                        scope.launch { WeatherRepository.refresh(context, force = true) }
+                                                    },
+                                                    onOpenSettings = onOpenSettings,
+                                                )
                                             }
                                         }
                                     }
@@ -804,6 +890,17 @@ internal fun Modifier.rainSurface(key: String, corner: Dp = 28.dp, mask: (() -> 
 }
 
 internal val SIDE_PADDING = 20.dp
+private val BALANCED_SECTIONS = listOf(
+    MainSection.WIND,
+    MainSection.ACTIVITIES,
+    MainSection.SUN,
+    MainSection.INSIGHTS,
+    MainSection.RADAR,
+    MainSection.AIR_QUALITY,
+    MainSection.MARINE,
+    MainSection.RIVER,
+    MainSection.HISTORY,
+)
 private const val CONTENT_FADE_MS = 500
 private const val EFFECTS_DELAY_MS = 450L
 private const val EFFECTS_FADE_MS = 1800
@@ -1135,8 +1232,15 @@ private fun AlertCard(alert: WeatherAlert, palette: WeatherPalette, modifier: Mo
 
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
-internal fun HourlySection(snapshot: WeatherSnapshot, unit: TemperatureUnit, palette: WeatherPalette, surfacePrefix: String = "hourly") {
+internal fun HourlySection(
+    snapshot: WeatherSnapshot,
+    unit: TemperatureUnit,
+    palette: WeatherPalette,
+    surfacePrefix: String = "hourly",
+    units: WeatherUnits? = null,
+) {
     val context = LocalContext.current
+    var selectedHour by remember { mutableStateOf<HourlyForecast?>(null) }
     val now by rememberMinuteClock()
     val hours = remember(snapshot, now) { snapshot.upcomingHours(now) }
     if (hours.isEmpty()) return
@@ -1156,6 +1260,7 @@ internal fun HourlySection(snapshot: WeatherSnapshot, unit: TemperatureUnit, pal
                     .fillMaxSize()
                     .maskClip(MaterialTheme.shapes.extraLarge)
                     .background(palette.card)
+                    .then(if (units != null) Modifier.clickable { selectedHour = hour } else Modifier)
                     .padding(vertical = 16.dp),
                 horizontalAlignment = Alignment.CenterHorizontally,
                 verticalArrangement = Arrangement.SpaceBetween,
@@ -1173,17 +1278,35 @@ internal fun HourlySection(snapshot: WeatherSnapshot, unit: TemperatureUnit, pal
             }
         }
     }
+    val hourForSheet = selectedHour
+    if (hourForSheet != null && units != null) {
+        ForecastDetailSheet(
+            title = formatHour(context, hourForSheet.timeMillis),
+            details = remember(hourForSheet, units) { hourDetails(context, hourForSheet, units) },
+            palette = palette,
+            onDismiss = { selectedHour = null },
+        )
+    }
 }
 
 @Composable
-private fun DailySection(days: List<DailyForecast>, unit: TemperatureUnit, palette: WeatherPalette, modifier: Modifier) {
+private fun DailySection(days: List<DailyForecast>, units: WeatherUnits, palette: WeatherPalette, modifier: Modifier) {
+    val context = LocalContext.current
+    val unit = units.temperature
+    var selectedDay by remember { mutableStateOf<Pair<String, DailyForecast>?>(null) }
+    val todayLabel = stringResource(R.string.weather_detail_today)
     val low = days.minOf { it.lowC }
     val high = days.maxOf { it.highC }
     val span = (high - low).coerceAtLeast(1.0)
     Column(modifier) {
         RoundedCardContainer(modifier = Modifier.rainSurface("daily"), spacing = 2.dp, cornerRadius = 28.dp) {
             days.forEachIndexed { index, day ->
-                Surface(color = palette.card, shape = MaterialTheme.shapes.extraSmall, modifier = Modifier.fillMaxWidth()) {
+                Surface(
+                    onClick = { selectedDay = (if (index == 0) todayLabel else dayName(day.dayMillis)) to day },
+                    color = palette.card,
+                    shape = MaterialTheme.shapes.extraSmall,
+                    modifier = Modifier.fillMaxWidth(),
+                ) {
                     Row(
                         Modifier.padding(horizontal = 20.dp, vertical = 18.dp),
                         verticalAlignment = Alignment.CenterVertically,
@@ -1219,12 +1342,21 @@ private fun DailySection(days: List<DailyForecast>, unit: TemperatureUnit, palet
             }
         }
     }
+    selectedDay?.let { (title, day) ->
+        ForecastDetailSheet(
+            title = title,
+            details = remember(day, units) { dayDetails(context, day, units) },
+            palette = palette,
+            onDismiss = { selectedDay = null },
+        )
+    }
 }
 
-private class Detail(val slot: WeatherDetailSlot, val label: Int, val value: String)
+internal class Detail(val slot: WeatherDetailSlot, val label: Int, val value: String)
 
 @Composable
 private fun DetailsSection(snapshot: WeatherSnapshot, units: WeatherUnits, palette: WeatherPalette, modifier: Modifier) {
+    val context = LocalContext.current
     val extras = snapshot.extras
     val details = buildList {
         snapshot.humidity?.let { add(Detail(WeatherDetailSlot.HUMIDITY, R.string.weather_detail_humidity, "$it%")) }
@@ -1249,6 +1381,17 @@ private fun DetailsSection(snapshot: WeatherSnapshot, units: WeatherUnits, palet
         }
         extras?.dewPointC?.let { add(Detail(WeatherDetailSlot.DEW_POINT, R.string.weather_detail_dew_point, WeatherFormat.temperature(it, units.temperature))) }
         extras?.cloudCover?.let { add(Detail(WeatherDetailSlot.CLOUD_COVER, R.string.weather_detail_cloud_cover, "$it%")) }
+        val today = snapshot.daily?.firstOrNull()
+        today?.sunshineSeconds?.let { add(Detail(WeatherDetailSlot.UV, R.string.weather_detail_sunshine, formatDuration(context, it))) }
+        today?.daylightSeconds?.let { add(Detail(WeatherDetailSlot.UV, R.string.weather_detail_daylight, formatDuration(context, it))) }
+        uvProtectionWindow(snapshot, System.currentTimeMillis())?.let { (start, end) ->
+            add(Detail(WeatherDetailSlot.UV, R.string.uv_protection, "${formatHour(context, start)}–${formatHour(context, end)}"))
+        }
+        extras?.snowDepthCm?.takeIf { it >= 1 }?.let { add(Detail(WeatherDetailSlot.PRECIPITATION, R.string.weather_detail_snow_depth, "${it.roundToInt()} cm")) }
+        extras?.freezingLevelM?.takeIf { it < 3000 }?.let { add(Detail(WeatherDetailSlot.DEW_POINT, R.string.weather_detail_freezing_level, "${it.roundToInt()} m")) }
+        snapshot.hourly.firstOrNull()?.let { stormRisk(it.cape, it.lightningPotential) }?.takeIf { it != StormRisk.LOW }?.let {
+            add(Detail(WeatherDetailSlot.RAIN_CHANCE, R.string.weather_detail_storm_risk, context.getString(stormRiskLabel(it))))
+        }
     }
     Column(modifier) {
         Surface(color = palette.card, shape = MaterialTheme.shapes.extraLarge, modifier = Modifier.rainSurface("details").fillMaxWidth()) {
@@ -1265,7 +1408,7 @@ private fun DetailsSection(snapshot: WeatherSnapshot, units: WeatherUnits, palet
 }
 
 @Composable
-private fun DetailTile(detail: Detail, palette: WeatherPalette, modifier: Modifier) {
+internal fun DetailTile(detail: Detail, palette: WeatherPalette, modifier: Modifier) {
     Row(
         modifier.padding(horizontal = 12.dp, vertical = 14.dp),
         verticalAlignment = Alignment.CenterVertically,
@@ -1294,6 +1437,17 @@ private fun SunSection(snapshot: WeatherSnapshot, palette: WeatherPalette, modif
                     SunTile(R.string.weather_detail_sunset, formatTime(context, set), palette, Modifier.weight(1f))
                 }
             }
+            val location = remember(snapshot.updatedAt) { WeatherRepository.lastFetchLocation() }
+            val solar = remember(location, now / (60 * 60_000L)) {
+                location?.let { SolarTimes.forDay(now, it.latitude, it.longitude) }
+            }
+            if (solar != null && (solar.eveningGolden != null || solar.eveningBlue != null)) {
+                fun range(window: SolarTimes.Window?) = window?.let { "${formatTime(context, it.startMillis)} – ${formatTime(context, it.endMillis)}" }
+                Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(2.dp)) {
+                    range(solar.eveningGolden)?.let { SunTile(R.string.golden_hour, it, palette, Modifier.weight(1f), range(solar.morningGolden)) }
+                    range(solar.eveningBlue)?.let { SunTile(R.string.blue_hour, it, palette, Modifier.weight(1f), range(solar.morningBlue)) }
+                }
+            }
             MoonTile(phase, palette, Modifier.fillMaxWidth())
         }
     }
@@ -1310,17 +1464,24 @@ private fun MoonTile(phase: Double, palette: WeatherPalette, modifier: Modifier)
                 Text(stringResource(R.string.weather_detail_moon), color = palette.onBaseMuted, style = MaterialTheme.typography.labelMedium)
                 Text(stringResource(MoonPhase.nameRes(phase)), color = palette.onBase, style = MaterialTheme.typography.headlineSmall)
                 Text("${MoonPhase.illuminationPercent(phase)}%", color = palette.onBaseMuted, style = MaterialTheme.typography.bodyMedium)
+                val daysToFull = (((0.5 - phase) % 1.0 + 1.0) % 1.0 * MoonPhase.SYNODIC_DAYS).roundToInt()
+                Text(
+                    if (daysToFull == 0 || daysToFull >= 29) stringResource(R.string.moon_full_tonight) else pluralStringResource(R.plurals.moon_full_in_days, daysToFull, daysToFull),
+                    color = palette.onBaseMuted,
+                    style = MaterialTheme.typography.bodyMedium,
+                )
             }
         }
     }
 }
 
 @Composable
-private fun SunTile(label: Int, time: String, palette: WeatherPalette, modifier: Modifier) {
+private fun SunTile(label: Int, time: String, palette: WeatherPalette, modifier: Modifier, secondary: String? = null) {
     Surface(color = palette.card, shape = MaterialTheme.shapes.extraSmall, modifier = modifier) {
         Column(Modifier.padding(20.dp)) {
             Text(stringResource(label), color = palette.onBaseMuted, style = MaterialTheme.typography.labelMedium)
-            Text(time, color = palette.onBase, style = MaterialTheme.typography.headlineSmall)
+            Text(time, color = palette.onBase, style = if (secondary != null) MaterialTheme.typography.titleMedium else MaterialTheme.typography.headlineSmall)
+            secondary?.let { Text(it, color = palette.onBaseMuted, style = MaterialTheme.typography.bodySmall) }
         }
     }
 }
@@ -1443,19 +1604,19 @@ private fun errorLabel(context: Context, error: WeatherError?): String {
     return if (detail != null) "$base: $detail" else base
 }
 
-private fun compass(degrees: Double): String {
+internal fun compass(degrees: Double): String {
     val points = listOf("N", "NE", "E", "SE", "S", "SW", "W", "NW")
     return points[(((degrees % 360 + 360) % 360) / 45.0).roundToInt() % 8]
 }
 
-private fun dayName(millis: Long): String = SimpleDateFormat("EEE", Locale.getDefault()).format(Date(millis))
+internal fun dayName(millis: Long): String = SimpleDateFormat("EEE", Locale.getDefault()).format(Date(millis))
 
 private fun formatTime(context: Context, millis: Long): String {
     val pattern = if (DateFormat.is24HourFormat(context)) "HH:mm" else "h:mm a"
     return SimpleDateFormat(pattern, Locale.getDefault()).format(Date(millis))
 }
 
-private fun formatHour(context: Context, millis: Long): String {
+internal fun formatHour(context: Context, millis: Long): String {
     val pattern = if (DateFormat.is24HourFormat(context)) "HH:mm" else "ha"
     return SimpleDateFormat(pattern, Locale.getDefault()).format(Date(millis)).lowercase(Locale.getDefault())
 }

@@ -132,7 +132,7 @@ private fun WeatherWidgetContent(
     val resources = context.resources
     val density = resources.displayMetrics.density
     val textColor = widgetTextColor(mode)
-    val textArgb = widgetTextArgb(mode)
+    val textArgb = WIDGET_TEXT_ARGB
     
     val shadow = mode == WidgetBackground.NONE
     val padding = spacing
@@ -169,6 +169,7 @@ private fun WeatherWidgetContent(
                 provider = ImageProvider(bitmap),
                 contentDescription = temperature,
                 contentScale = ContentScale.Fit,
+                colorFilter = widgetTextTint(mode),
                 modifier = GlanceModifier.fillMaxWidth().defaultWeight(),
             )
             if (showSubtitle) {
@@ -188,6 +189,7 @@ private fun WeatherWidgetContent(
                     Image(
                         provider = ImageProvider(subtitleBitmap),
                         contentDescription = subtitle,
+                        colorFilter = widgetTextTint(mode),
                     )
                 }
             }
@@ -218,6 +220,9 @@ object WeatherWidgetUpdater {
             runCatching { WidgetHub.refresh(app) }
             runCatching { WeatherWidget().updateAll(app) }
             runCatching { HourlyWidget().updateAll(app) }
+            runCatching { DailyWidget().updateAll(app) }
+            runCatching { NowcastWidget().updateAll(app) }
+            runCatching { AqiWidget().updateAll(app) }
         }
     }
 
@@ -229,6 +234,7 @@ object WeatherWidgetUpdater {
             val manager = GlanceAppWidgetManager(app)
             runCatching { manager.setWidgetPreviews(WeatherWidgetReceiver::class) }
             runCatching { manager.setWidgetPreviews(HourlyWidgetReceiver::class) }
+            runCatching { manager.setWidgetPreviews(DailyWidgetReceiver::class) }
         }
     }
 }

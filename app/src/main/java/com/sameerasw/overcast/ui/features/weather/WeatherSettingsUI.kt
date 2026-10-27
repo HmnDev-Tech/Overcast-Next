@@ -9,6 +9,13 @@
 
 package com.sameerasw.overcast.ui.features.weather
 
+import android.Manifest
+import android.os.Build
+import android.text.format.DateFormat
+import androidx.activity.compose.rememberLauncherForActivityResult
+import androidx.activity.result.contract.ActivityResultContracts
+import com.sameerasw.overcast.weather.notify.WeatherNotifications
+import java.util.Calendar
 import android.content.ClipboardManager
 import android.content.Context
 import android.content.Intent
@@ -34,6 +41,7 @@ import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableIntStateOf
@@ -59,6 +67,7 @@ import com.sameerasw.overcast.ui.core.cards.ConfigPickerItem
 import com.sameerasw.overcast.ui.core.cards.IconToggleItem
 import com.sameerasw.overcast.ui.core.containers.RoundedCardContainer
 import com.sameerasw.overcast.ui.core.sheets.OvercastBottomSheet
+import com.sameerasw.overcast.utils.CompatibilityFeature
 import com.sameerasw.overcast.utils.HapticUtil
 import com.sameerasw.overcast.weather.DistanceUnit
 import com.sameerasw.overcast.weather.PrecipitationUnit
@@ -69,6 +78,10 @@ import com.sameerasw.overcast.weather.WeatherRepository
 import com.sameerasw.overcast.weather.WeatherUnits
 import com.sameerasw.overcast.weather.WindSpeedUnit
 import com.sameerasw.overcast.weather.aqi.AqiProviders
+import com.sameerasw.overcast.weather.radar.RadarException
+import com.sameerasw.overcast.weather.radar.RadarProviders
+import com.sameerasw.overcast.weather.radar.RadarRepository
+import com.sameerasw.overcast.weather.radar.RadarStatus
 import com.sameerasw.overcast.weather.model.WeatherError
 import com.sameerasw.overcast.weather.provider.OpenMeteoModels
 import com.sameerasw.overcast.weather.provider.WeatherProviders
@@ -77,6 +90,14 @@ import kotlinx.coroutines.launch
 
 
 private val REFRESH_OPTIONS = listOf(30, 60, 120, 180, 360)
+
+private val COMPATIBILITY_OPTIONS = listOf(
+    Triple(CompatibilityFeature.STILL_EFFECTS, R.drawable.rounded_rainy_24, R.string.compat_still_effects),
+    Triple(CompatibilityFeature.NO_BLUR, R.drawable.rounded_blur_on_24, R.string.compat_no_blur),
+    Triple(CompatibilityFeature.NO_GLASS, R.drawable.rounded_water_drop_24, R.string.compat_no_glass),
+    Triple(CompatibilityFeature.NO_HEAT_HAZE, R.drawable.rounded_thermostat_24, R.string.compat_no_heat_haze),
+    Triple(CompatibilityFeature.REDUCED_MOTION, R.drawable.rounded_animation_24, R.string.compat_reduced_motion),
+)
 
 @OptIn(ExperimentalMaterial3Api::class, ExperimentalMaterial3ExpressiveApi::class)
 @Composable
@@ -97,6 +118,8 @@ fun WeatherSettingsUI(
     var screensaverAutoAnimate by remember { mutableStateOf(settings.isScreensaverAutoAnimateEnabled()) }
     var unitsExpanded by remember { mutableStateOf(false) }
     var showCompatibilityInfo by remember { mutableStateOf(false) }
+    var showLocations by remember { mutableStateOf(false) }
+    var showSections by remember { mutableStateOf(false) }
     var effects by remember { mutableStateOf(settings.isWeatherEffectsEnabled()) }
     var weatherHaptics by remember { mutableStateOf(settings.isWeatherHapticsEnabled()) }
     var refreshMinutes by remember { mutableIntStateOf(settings.getWeatherRefreshMinutes()) }
@@ -116,6 +139,32 @@ fun WeatherSettingsUI(
     ) {
             SectionTitle(R.string.weather_section_source)
             RoundedCardContainer(spacing = 2.dp, cornerRadius = 24.dp) {
+                var locationTick by remember { mutableIntStateOf(0) }
+                val locationLabel = remember(locationTick) {
+                    settings.getWeatherManualLocation()?.third?.takeIf { settings.getWeatherLocationMode() == "manual" }
+                }
+                IconToggleItem(
+                    iconRes = R.drawable.rounded_location_on_24,
+                    title = stringResource(R.string.weather_choose_location),
+                    showToggle = false,
+                    onClick = { showLocations = true },
+                    trailingContent = {
+                        Text(
+                            text = locationLabel ?: stringResource(R.string.weather_location_device),
+                            style = MaterialTheme.typography.labelLarge,
+                            color = MaterialTheme.colorScheme.primary,
+                        )
+                    },
+                )
+                if (showLocations) {
+                    LocationPickerSheet(
+                        scope = scope,
+                        onDismissRequest = {
+                            showLocations = false
+                            locationTick++
+                        },
+                    )
+                }
                 ConfigPickerItem(
                     title = stringResource(R.string.weather_provider_title),
                     selectedValue = provider.displayName,
@@ -250,6 +299,66 @@ fun WeatherSettingsUI(
                         )
                     }
                 }
+                var radarProviderId by remember { mutableStateOf(RadarProviders.resolve(settings.getRadarProvider())) }
+                ConfigPickerItem(
+                    title = stringResource(R.string.radar_provider_title),
+                    selectedValue = RadarProviders.all.first { it.first == radarProviderId }.second ?: offLabel,
+                    iconRes = R.drawable.rounded_radar_24,
+                    modifier = Modifier.fillMaxWidth(),
+                ) {
+                    RadarProviders.all.forEach { (id, name) ->
+                        SegmentedDropdownMenuItem(
+                            text = { Text(name ?: offLabel) },
+                            onClick = {
+                                radarProviderId = id
+                                settings.setRadarProvider(id)
+                                RadarRepository.clearStatus()
+                                if (id != RadarProviders.OFF_ID) {
+                                    scope.launch {
+                                        try {
+                                            RadarRepository.current(context)
+                                        } catch (_: RadarException) {
+                                        }
+                                    }
+                                }
+                            },
+                        )
+                    }
+                }
+                val radarStatus by RadarRepository.status.collectAsState()
+                LaunchedEffect(Unit) {
+                    if (radarProviderId != RadarProviders.OFF_ID && radarStatus == null) {
+                        try {
+                            RadarRepository.current(context)
+                        } catch (_: RadarException) {
+                        }
+                    }
+                }
+                AnimatedVisibility(visible = radarProviderId != RadarProviders.OFF_ID && radarStatus is RadarStatus.Failed) {
+                    val shownStatus = remember { mutableStateOf(radarStatus) }
+                    if (radarStatus is RadarStatus.Failed) shownStatus.value = radarStatus
+                    val failed = shownStatus.value as? RadarStatus.Failed
+                    val container = if (failed != null) MaterialTheme.colorScheme.errorContainer else MaterialTheme.colorScheme.secondaryContainer
+                    val content = if (failed != null) MaterialTheme.colorScheme.onErrorContainer else MaterialTheme.colorScheme.onSecondaryContainer
+                    Surface(color = container, shape = MaterialTheme.shapes.extraSmall, modifier = Modifier.fillMaxWidth()) {
+                        Row(
+                            modifier = Modifier.padding(16.dp),
+                            verticalAlignment = Alignment.CenterVertically,
+                            horizontalArrangement = Arrangement.spacedBy(12.dp),
+                        ) {
+                            Icon(
+                                painterResource(if (failed != null) R.drawable.rounded_warning_24 else R.drawable.rounded_check_24),
+                                contentDescription = null,
+                                tint = content,
+                            )
+                            Text(
+                                text = failed?.let { radarErrorText(context, it.error) }.orEmpty(),
+                                style = MaterialTheme.typography.bodyMedium,
+                                color = content,
+                            )
+                        }
+                    }
+                }
                 ConfigPickerItem(
                     title = stringResource(R.string.weather_refresh_interval_title),
                     selectedValue = intervalLabel(context, refreshMinutes),
@@ -376,6 +485,12 @@ fun WeatherSettingsUI(
                     )
                 }
                 IconToggleItem(
+                    iconRes = R.drawable.rounded_visibility_24,
+                    title = stringResource(R.string.what_to_show_title),
+                    showToggle = false,
+                    onClick = { showSections = true },
+                )
+                IconToggleItem(
                     iconRes = R.drawable.rounded_rainy_24,
                     title = stringResource(R.string.weather_effects_title),
                     isChecked = effects,
@@ -405,6 +520,89 @@ fun WeatherSettingsUI(
                         HapticUtil.performVirtualKeyHaptic(view)
                         compatibility = it
                         settings.setCompatibilityMode(it)
+                    },
+                )
+                AnimatedVisibility(visible = compatibility) {
+                    Column(verticalArrangement = Arrangement.spacedBy(2.dp)) {
+                        COMPATIBILITY_OPTIONS.forEach { (feature, iconRes, titleRes) ->
+                            var checked by remember { mutableStateOf(settings.isCompatibilityFeatureEnabled(feature)) }
+                            IconToggleItem(
+                                iconRes = iconRes,
+                                title = stringResource(titleRes),
+                                isChecked = checked,
+                                onCheckedChange = {
+                                    HapticUtil.performVirtualKeyHaptic(view)
+                                    checked = it
+                                    settings.setCompatibilityFeatureEnabled(feature, it)
+                                },
+                            )
+                        }
+                    }
+                }
+            }
+
+            SectionTitle(R.string.notify_section)
+            RoundedCardContainer(spacing = 2.dp, cornerRadius = 24.dp) {
+                var summary by remember { mutableStateOf(settings.isMorningSummaryEnabled() && WeatherNotifications.canPost(context)) }
+                var summaryHour by remember { mutableIntStateOf(settings.getMorningSummaryHour()) }
+                var rainAlerts by remember { mutableStateOf(settings.isRainAlertEnabled() && WeatherNotifications.canPost(context)) }
+                var pendingToggle by remember { mutableStateOf<((Boolean) -> Unit)?>(null) }
+                val notificationLauncher = rememberLauncherForActivityResult(ActivityResultContracts.RequestPermission()) { granted ->
+                    pendingToggle?.invoke(granted)
+                    pendingToggle = null
+                }
+                fun withPermission(apply: (Boolean) -> Unit) {
+                    if (WeatherNotifications.canPost(context) || Build.VERSION.SDK_INT < Build.VERSION_CODES.TIRAMISU) {
+                        apply(true)
+                    } else {
+                        pendingToggle = apply
+                        notificationLauncher.launch(Manifest.permission.POST_NOTIFICATIONS)
+                    }
+                }
+                IconToggleItem(
+                    iconRes = R.drawable.rounded_notifications_24,
+                    title = stringResource(R.string.notify_morning_summary),
+                    isChecked = summary,
+                    onCheckedChange = { checked ->
+                        HapticUtil.performVirtualKeyHaptic(view)
+                        val apply: (Boolean) -> Unit = { allowed ->
+                            summary = checked && allowed
+                            settings.setMorningSummaryEnabled(summary)
+                            WeatherNotifications.scheduleSummary(context)
+                        }
+                        if (checked) withPermission(apply) else apply(true)
+                    },
+                )
+                AnimatedVisibility(visible = summary) {
+                    ConfigPickerItem(
+                        title = stringResource(R.string.notify_summary_time),
+                        selectedValue = hourLabel(context, summaryHour),
+                        iconRes = R.drawable.rounded_schedule_24,
+                        modifier = Modifier.fillMaxWidth(),
+                    ) {
+                        (5..11).forEach { hour ->
+                            SegmentedDropdownMenuItem(
+                                text = { Text(hourLabel(context, hour)) },
+                                onClick = {
+                                    summaryHour = hour
+                                    settings.setMorningSummaryHour(hour)
+                                    WeatherNotifications.scheduleSummary(context)
+                                },
+                            )
+                        }
+                    }
+                }
+                IconToggleItem(
+                    iconRes = R.drawable.rounded_rainy_24,
+                    title = stringResource(R.string.notify_rain_alert),
+                    isChecked = rainAlerts,
+                    onCheckedChange = { checked ->
+                        HapticUtil.performVirtualKeyHaptic(view)
+                        val apply: (Boolean) -> Unit = { allowed ->
+                            rainAlerts = checked && allowed
+                            settings.setRainAlertEnabled(rainAlerts)
+                        }
+                        if (checked) withPermission(apply) else apply(true)
                     },
                 )
             }
@@ -447,6 +645,42 @@ fun WeatherSettingsUI(
     if (showCompatibilityInfo) {
         CompatibilityInfoSheet(onDismiss = { showCompatibilityInfo = false })
     }
+    if (showSections) {
+        SectionsSheet(settings, onDismiss = { showSections = false })
+    }
+}
+
+@Composable
+private fun SectionsSheet(settings: SettingsRepository, onDismiss: () -> Unit) {
+    val view = LocalView.current
+    OvercastBottomSheet(onDismissRequest = onDismiss) {
+        Column(
+            modifier = Modifier.fillMaxWidth().padding(horizontal = 16.dp, vertical = 8.dp),
+            verticalArrangement = Arrangement.spacedBy(16.dp),
+        ) {
+            Text(
+                text = stringResource(R.string.what_to_show_title),
+                style = MaterialTheme.typography.headlineSmall,
+                modifier = Modifier.padding(horizontal = 8.dp),
+            )
+            RoundedCardContainer(spacing = 2.dp, cornerRadius = 24.dp) {
+                MainSection.entries.forEach { section ->
+                    var visible by remember { mutableStateOf(settings.isMainSectionVisible(section)) }
+                    IconToggleItem(
+                        iconRes = section.iconRes,
+                        title = stringResource(section.titleRes),
+                        isChecked = visible,
+                        onCheckedChange = {
+                            HapticUtil.performVirtualKeyHaptic(view)
+                            visible = it
+                            settings.setMainSectionVisible(section, it)
+                        },
+                    )
+                }
+            }
+            Spacer(Modifier.size(8.dp))
+        }
+    }
 }
 
 @Composable
@@ -478,6 +712,25 @@ internal fun SectionTitle(res: Int) {
         color = MaterialTheme.colorScheme.onSurfaceVariant,
         modifier = Modifier.padding(start = 8.dp),
     )
+}
+
+private fun radarErrorText(context: Context, error: RadarException): String = context.getString(
+    when (error.reason) {
+        RadarException.Reason.NO_LOCATION -> R.string.radar_error_no_location
+        RadarException.Reason.MISSING_KEY -> R.string.radar_error_missing_key
+        RadarException.Reason.INVALID_KEY -> R.string.radar_error_invalid_key
+        RadarException.Reason.RATE_LIMITED -> R.string.radar_error_rate_limited
+        RadarException.Reason.NETWORK -> R.string.radar_error_network
+        RadarException.Reason.BAD_RESPONSE -> R.string.radar_error_unknown
+    },
+)
+
+private fun hourLabel(context: Context, hour: Int): String {
+    val time = Calendar.getInstance().apply {
+        set(Calendar.HOUR_OF_DAY, hour)
+        set(Calendar.MINUTE, 0)
+    }
+    return DateFormat.getTimeFormat(context).format(time.time)
 }
 
 private fun intervalLabel(context: Context, minutes: Int): String =
