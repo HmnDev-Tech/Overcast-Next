@@ -151,6 +151,7 @@ private fun RadarTiles(radar: RadarMap, palette: WeatherPalette) {
         Modifier
             .fillMaxWidth()
             .aspectRatio(1.4f)
+            .rainSurface("radar")
             .clip(MaterialTheme.shapes.extraLarge)
             .background(Color(0xFF0E0E10))
             .pointerInput(Unit) {

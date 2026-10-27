@@ -112,7 +112,7 @@ fun AqiSection(snapshot: WeatherSnapshot, palette: WeatherPalette, modifier: Mod
         Surface(
             color = palette.card,
             shape = MaterialTheme.shapes.extraLarge,
-            modifier = Modifier.fillMaxWidth(),
+            modifier = Modifier.rainSurface("aqi").fillMaxWidth(),
         ) {
             Column(
                 Modifier
