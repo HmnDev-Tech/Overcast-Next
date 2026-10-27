@@ -19,6 +19,7 @@ import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.fillMaxWidth
+import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
@@ -61,6 +62,7 @@ import com.sameerasw.overcast.R
 import com.sameerasw.overcast.data.repository.SettingsRepository
 import com.sameerasw.overcast.utils.HapticUtil
 import com.sameerasw.overcast.weather.aqi.AqiCategory
+import com.sameerasw.overcast.weather.aqi.AqiHour
 import com.sameerasw.overcast.weather.aqi.AqiProviders
 import com.sameerasw.overcast.weather.aqi.AqiRepository
 import com.sameerasw.overcast.weather.aqi.PollenLevel
@@ -186,8 +188,13 @@ fun AqiSection(snapshot: WeatherSnapshot, palette: WeatherPalette, modifier: Mod
                             aqi.pm10?.let { Pollutant("PM10", it, palette) }
                             aqi.ozone?.let { Pollutant("O₃", it, palette) }
                             aqi.no2?.let { Pollutant("NO₂", it, palette) }
+                            aqi.so2?.let { Pollutant("SO₂", it, palette) }
+                            aqi.co?.let { Pollutant("CO", it, palette) }
+                            aqi.dust?.takeIf { it > 0 }?.let { Pollutant(stringResource(R.string.aqi_dust), it, palette) }
+                            aqi.euAqi?.let { Pollutant(stringResource(R.string.aqi_european), it.toDouble(), palette, unit = "") }
                         }
                     }
+                    if (aqi.forecast.size > 1) AqiForecastStrip(aqi.forecast, palette)
                     if (aqi.pollen.isNotEmpty()) PollenSection(aqi.pollen, palette)
                 }
                 if (failed && data == null) {
@@ -237,6 +244,37 @@ private fun AqiBadge(aqi: Int?, color: Color) {
                 }
             },
     )
+}
+
+@Composable
+private fun AqiForecastStrip(forecast: List<AqiHour>, palette: WeatherPalette) {
+    val context = LocalContext.current
+    Row(
+        Modifier.fillMaxWidth().height(64.dp),
+        horizontalArrangement = Arrangement.spacedBy(4.dp),
+        verticalAlignment = Alignment.Bottom,
+    ) {
+        forecast.forEachIndexed { index, hour ->
+            Column(Modifier.weight(1f), horizontalAlignment = Alignment.CenterHorizontally) {
+                val fraction = (hour.aqi / AQI_SCALE_MAX).coerceIn(0.08f, 1f)
+                Box(
+                    Modifier
+                        .fillMaxWidth()
+                        .height(40.dp * fraction)
+                        .clip(CircleShape)
+                        .background(aqiColor(AqiCategory.from(hour.aqi))),
+                )
+                Text(
+                    if (index % 3 == 0) formatHour(context, hour.timeMillis) else "",
+                    color = palette.onBaseMuted,
+                    style = MaterialTheme.typography.labelSmall,
+                    maxLines = 1,
+                    softWrap = false,
+                    modifier = Modifier.padding(top = 4.dp),
+                )
+            }
+        }
+    }
 }
 
 @Composable
@@ -305,7 +343,7 @@ private fun pollenColor(level: PollenLevel): Color = when (level) {
 }
 
 @Composable
-private fun Pollutant(name: String, value: Double, palette: WeatherPalette) {
+private fun Pollutant(name: String, value: Double, palette: WeatherPalette, unit: String = " µg/m³") {
     Row(verticalAlignment = Alignment.CenterVertically) {
         Text(
             name,
@@ -319,7 +357,7 @@ private fun Pollutant(name: String, value: Double, palette: WeatherPalette) {
             style = MaterialTheme.typography.titleMedium,
         )
         Text(
-            " µg/m³",
+            unit,
             color = palette.onBaseMuted,
             style = MaterialTheme.typography.labelSmall,
         )

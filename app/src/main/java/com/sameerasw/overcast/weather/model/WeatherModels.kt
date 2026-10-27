@@ -58,6 +58,17 @@ data class HourlyForecast(
     val condition: WeatherCondition,
     val isDay: Boolean,
     val chanceOfRain: Int,
+    val precipitationMm: Double? = null,
+    val snowfallCm: Double? = null,
+    val feelsLikeC: Double? = null,
+    val humidity: Int? = null,
+    val windKph: Double? = null,
+    val windGustKph: Double? = null,
+    val windDirectionDeg: Double? = null,
+    val uvIndex: Double? = null,
+    val cloudCover: Int? = null,
+    val cape: Double? = null,
+    val lightningPotential: Double? = null,
 )
 
 @Keep
@@ -67,7 +78,21 @@ data class DailyForecast(
     val lowC: Double,
     val condition: WeatherCondition,
     val chanceOfRain: Int,
+    val precipitationMm: Double? = null,
+    val precipitationHours: Double? = null,
+    val snowfallCm: Double? = null,
+    val sunshineSeconds: Double? = null,
+    val daylightSeconds: Double? = null,
+    val windMaxKph: Double? = null,
+    val windGustMaxKph: Double? = null,
+    val windDirectionDeg: Double? = null,
+    val uvIndex: Double? = null,
+    val sunriseMillis: Long? = null,
+    val sunsetMillis: Long? = null,
 )
+
+@Keep
+data class MinutelyPrecipitation(val timeMillis: Long, val mm: Double)
 
 // Optional extras; providers fill what they offer and the detail sheet hides the rest.
 @Keep
@@ -83,6 +108,9 @@ data class WeatherExtras(
     val sunriseMillis: Long? = null,
     val sunsetMillis: Long? = null,
     val moonPhase: Double? = null,
+    val snowDepthCm: Double? = null,
+    val freezingLevelM: Double? = null,
+    val minutely: List<MinutelyPrecipitation>? = null,
 )
 
 @Keep
