@@ -2,7 +2,6 @@ package com.sameerasw.overcast.ui.features.weather
 
 import android.content.Context
 import android.content.SharedPreferences
-import android.text.format.DateFormat
 import androidx.compose.animation.AnimatedVisibility
 import androidx.compose.animation.expandVertically
 import androidx.compose.animation.fadeIn
@@ -10,25 +9,22 @@ import androidx.compose.animation.fadeOut
 import androidx.compose.animation.shrinkVertically
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
-import androidx.compose.foundation.layout.Arrangement
+import androidx.compose.foundation.gestures.detectTapGestures
+import androidx.compose.foundation.gestures.rememberTransformableState
+import androidx.compose.foundation.gestures.transformable
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.BoxWithConstraints
-import androidx.compose.foundation.layout.Column
-import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.aspectRatio
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.offset
-import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.shape.CircleShape
-import androidx.compose.material3.Icon
 import androidx.compose.material3.MaterialTheme
-import androidx.compose.material3.Surface
-import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.DisposableEffect
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableFloatStateOf
 import androidx.compose.runtime.mutableIntStateOf
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
@@ -36,24 +32,31 @@ import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
+import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.ColorFilter
 import androidx.compose.ui.graphics.ColorMatrix
+import androidx.compose.ui.graphics.FilterQuality
+import androidx.compose.ui.graphics.graphicsLayer
+import androidx.compose.ui.input.pointer.pointerInput
 import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.platform.LocalContext
-import androidx.compose.ui.res.painterResource
-import androidx.compose.ui.res.stringResource
+import androidx.compose.ui.platform.LocalDensity
+import androidx.compose.ui.unit.Density
+import androidx.compose.ui.unit.IntOffset
 import androidx.compose.ui.unit.dp
 import coil.compose.AsyncImage
 import coil.request.ImageRequest
+import coil.size.Size as CoilSize
+import com.sameerasw.overcast.weather.radar.MapTile
 import com.sameerasw.overcast.weather.provider.ProviderHttp
-import com.sameerasw.overcast.R
 import com.sameerasw.overcast.data.repository.SettingsRepository
 import com.sameerasw.overcast.weather.model.WeatherSnapshot
 import com.sameerasw.overcast.weather.radar.RadarMap
 import com.sameerasw.overcast.weather.radar.RadarProviders
 import com.sameerasw.overcast.weather.radar.RadarRepository
 import kotlinx.coroutines.CancellationException
+import kotlin.math.roundToInt
 
 @Composable
 fun RadarSection(snapshot: WeatherSnapshot, palette: WeatherPalette, modifier: Modifier = Modifier) {
@@ -98,45 +101,14 @@ fun RadarSection(snapshot: WeatherSnapshot, palette: WeatherPalette, modifier: M
         val shown = remember { mutableStateOf(map) }
         map?.let { shown.value = it }
         val radar = shown.value ?: return@AnimatedVisibility
-        Surface(
-            color = palette.card,
-            shape = MaterialTheme.shapes.extraLarge,
-            modifier = Modifier.fillMaxWidth(),
-        ) {
-            Column(Modifier.padding(20.dp), verticalArrangement = Arrangement.spacedBy(12.dp)) {
-                Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(12.dp)) {
-                    Icon(
-                        painterResource(R.drawable.rounded_radar_24),
-                        contentDescription = null,
-                        tint = palette.accent,
-                        modifier = Modifier.size(24.dp),
-                    )
-                    Text(
-                        stringResource(R.string.radar_title),
-                        color = palette.onBase,
-                        style = MaterialTheme.typography.titleMedium,
-                        modifier = Modifier.weight(1f),
-                    )
-                    radar.timeMillis?.let {
-                        Text(
-                            DateFormat.getTimeFormat(context).format(it),
-                            color = palette.onBaseMuted,
-                            style = MaterialTheme.typography.labelLarge,
-                        )
-                    }
-                }
-                RadarTiles(radar, palette)
-                Text(
-                    radar.attribution,
-                    color = palette.onBaseMuted,
-                    style = MaterialTheme.typography.labelSmall,
-                )
-            }
-        }
+        RadarTiles(radar, palette)
     }
 }
 
-// Inverts the light OSM tiles and dims them so the map sits under the dark card.
+private const val RADAR_TILES_ACROSS = 1.2f
+private const val MAX_RADAR_ZOOM = 4f
+
+// Inverts the light OSM tiles and dims them so the map sits under the dark UI.
 private val DarkMapFilter = ColorFilter.colorMatrix(
     ColorMatrix(
         floatArrayOf(
@@ -151,36 +123,97 @@ private val DarkMapFilter = ColorFilter.colorMatrix(
 @Composable
 private fun RadarTiles(radar: RadarMap, palette: WeatherPalette) {
     val context = LocalContext.current
+    val density = LocalDensity.current
+    var scale by remember { mutableFloatStateOf(1f) }
+    var pan by remember { mutableStateOf(Offset.Zero) }
+    val halfSize = remember { floatArrayOf(0f, 0f) }
+    val transformState = rememberTransformableState { zoomChange, panChange, _ ->
+        scale = (scale * zoomChange).coerceIn(1f, MAX_RADAR_ZOOM)
+        val limitX = halfSize[0] * (scale - 1f)
+        val limitY = halfSize[1] * (scale - 1f)
+        val next = pan + panChange
+        pan = Offset(next.x.coerceIn(-limitX, limitX), next.y.coerceIn(-limitY, limitY))
+    }
     BoxWithConstraints(
         Modifier
             .fillMaxWidth()
             .aspectRatio(1.4f)
-            .clip(MaterialTheme.shapes.large)
-            .background(Color(0xFF0E0E10)),
+            .clip(MaterialTheme.shapes.extraLarge)
+            .background(Color(0xFF0E0E10))
+            .pointerInput(Unit) {
+                detectTapGestures(onDoubleTap = {
+                    scale = 1f
+                    pan = Offset.Zero
+                })
+            }
+            .transformable(transformState, canPan = { scale > 1.01f }),
     ) {
-        val tile = maxWidth / 2
-        val originX = maxWidth / 2 - tile * (1f + radar.offsetX)
-        val originY = maxHeight / 2 - tile * (1f + radar.offsetY)
-        radar.tiles.forEach { t ->
-            val tileModifier = Modifier
-                .offset(originX + tile * (t.dx + 1), originY + tile * (t.dy + 1))
-                .size(tile)
-            AsyncImage(
-                model = ImageRequest.Builder(context).data(t.baseUrl).addHeader("User-Agent", ProviderHttp.USER_AGENT).build(),
-                contentDescription = null,
-                contentScale = ContentScale.FillBounds,
-                colorFilter = DarkMapFilter,
-                modifier = tileModifier,
-            )
-            AsyncImage(model = t.overlayUrl, contentDescription = null, contentScale = ContentScale.FillBounds, alpha = 0.85f, modifier = tileModifier)
+        halfSize[0] = constraints.maxWidth / 2f
+        halfSize[1] = constraints.maxHeight / 2f
+        val unitPx = constraints.maxWidth / RADAR_TILES_ACROSS
+        val originX = constraints.maxWidth / 2f - unitPx * radar.centerX
+        val originY = constraints.maxHeight / 2f - unitPx * radar.centerY
+        Box(
+            Modifier
+                .matchParentSize()
+                .graphicsLayer {
+                    scaleX = scale
+                    scaleY = scale
+                    translationX = pan.x
+                    translationY = pan.y
+                },
+        ) {
+            radar.baseTiles.forEach { tile ->
+                MapTileImage(tile, unitPx, originX, originY, density, DarkMapFilter, 1f, context)
+            }
+            radar.overlayTiles.forEach { tile ->
+                MapTileImage(tile, unitPx, originX, originY, density, null, 0.85f, context)
+            }
         }
         Box(
             Modifier
                 .align(Alignment.Center)
+                .graphicsLayer {
+                    translationX = pan.x
+                    translationY = pan.y
+                }
                 .size(12.dp)
                 .clip(CircleShape)
                 .background(palette.accent)
                 .border(2.dp, Color.White, CircleShape),
         )
     }
+}
+
+@Composable
+private fun MapTileImage(
+    tile: MapTile,
+    unitPx: Float,
+    originX: Float,
+    originY: Float,
+    density: Density,
+    colorFilter: ColorFilter?,
+    alpha: Float,
+    context: Context,
+) {
+    // Snap to whole pixels and overlap by one so neighbouring tiles never leave hairline seams.
+    val left = (originX + tile.x * unitPx).roundToInt()
+    val top = (originY + tile.y * unitPx).roundToInt()
+    val right = (originX + (tile.x + tile.size) * unitPx).roundToInt() + 1
+    val bottom = (originY + (tile.y + tile.size) * unitPx).roundToInt() + 1
+    AsyncImage(
+        model = ImageRequest.Builder(context)
+            .data(tile.url)
+            .addHeader("User-Agent", ProviderHttp.USER_AGENT)
+            .size(CoilSize.ORIGINAL)
+            .build(),
+        contentDescription = null,
+        contentScale = ContentScale.FillBounds,
+        colorFilter = colorFilter,
+        alpha = alpha,
+        filterQuality = FilterQuality.High,
+        modifier = Modifier
+            .offset { IntOffset(left, top) }
+            .size(with(density) { (right - left).toDp() }, with(density) { (bottom - top).toDp() }),
+    )
 }

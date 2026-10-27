@@ -30,14 +30,14 @@ object RadarProviders {
     fun resolve(id: String?): String = all.firstOrNull { it.first == id }?.first ?: OFF_ID
 }
 
-data class RadarTile(val dx: Int, val dy: Int, val baseUrl: String, val overlayUrl: String)
+// Positions and sizes are in radar-tile units from the top-left of the grid.
+data class MapTile(val url: String, val x: Float, val y: Float, val size: Float)
 
 data class RadarMap(
-    val tiles: List<RadarTile>,
-    val offsetX: Float,
-    val offsetY: Float,
-    val timeMillis: Long?,
-    val attribution: String,
+    val baseTiles: List<MapTile>,
+    val overlayTiles: List<MapTile>,
+    val centerX: Float,
+    val centerY: Float,
 )
 
 class RadarException(val reason: Reason, message: String? = null) : Exception(message) {
@@ -53,6 +53,7 @@ object RadarRepository {
     // RainViewer's free tier caps zoom at 7.
     private const val ZOOM = 7
     private const val GRID = 1
+    private const val BASE_ZOOM_STEP = 1
 
     private val _status = MutableStateFlow<RadarStatus?>(null)
     val status: StateFlow<RadarStatus?> = _status.asStateFlow()
@@ -80,8 +81,6 @@ object RadarRepository {
         val tileY = floor(y).toInt()
 
         val overlay: (Int, Int) -> String
-        val time: Long?
-        val attribution: String
         when (provider) {
             RadarProviders.RAINVIEWER_ID -> {
                 val json = try {
@@ -93,16 +92,12 @@ object RadarRepository {
                 val past = json.optJSONObject("radar")?.optJSONArray("past")
                 val frame = past?.optJSONObject(past.length() - 1) ?: throw RadarException(RadarException.Reason.BAD_RESPONSE)
                 val path = frame.optString("path")
-                time = frame.optLong("time") * 1000L
-                overlay = { tx, ty -> "$host$path/256/$ZOOM/$tx/$ty/2/1_1.png" }
-                attribution = "RainViewer · © OpenStreetMap contributors"
+                overlay = { tx, ty -> "$host$path/512/$ZOOM/$tx/$ty/2/1_1.png" }
             }
 
             RadarProviders.OPENWEATHERMAP_ID -> {
                 val key = settings.getWeatherApiKey(RadarProviders.OPENWEATHERMAP_ID) ?: throw RadarException(RadarException.Reason.MISSING_KEY)
-                time = null
                 overlay = { tx, ty -> "https://tile.openweathermap.org/map/precipitation_new/$ZOOM/$tx/$ty.png?appid=${ProviderHttp.encode(key)}" }
-                attribution = "OpenWeatherMap · © OpenStreetMap contributors"
             }
 
             else -> throw RadarException(RadarException.Reason.BAD_RESPONSE)
@@ -110,14 +105,25 @@ object RadarRepository {
 
         fetch(overlay(Math.floorMod(tileX, n), tileY.coerceIn(0, n - 1)))
 
-        val tiles = buildList {
+        val overlayTiles = buildList {
             for (dy in -GRID..GRID) for (dx in -GRID..GRID) {
-                val tx = Math.floorMod(tileX + dx, n)
-                val ty = (tileY + dy).coerceIn(0, n - 1)
-                add(RadarTile(dx, dy, "https://tile.openstreetmap.org/$ZOOM/$tx/$ty.png", overlay(tx, ty)))
+                val ty = tileY + dy
+                if (ty !in 0 until n) continue
+                add(MapTile(overlay(Math.floorMod(tileX + dx, n), ty), (dx + GRID).toFloat(), (dy + GRID).toFloat(), 1f))
             }
         }
-        return RadarMap(tiles, (x - tileX).toFloat(), (y - tileY).toFloat(), time, attribution)
+        val split = 1 shl BASE_ZOOM_STEP
+        val baseN = n * split
+        val baseSize = 1f / split
+        val baseTiles = buildList {
+            for (by in 0 until (GRID * 2 + 1) * split) for (bx in 0 until (GRID * 2 + 1) * split) {
+                val ty = (tileY - GRID) * split + by
+                if (ty !in 0 until baseN) continue
+                val tx = Math.floorMod((tileX - GRID) * split + bx, baseN)
+                add(MapTile("https://tile.openstreetmap.org/${ZOOM + BASE_ZOOM_STEP}/$tx/$ty.png", bx * baseSize, by * baseSize, baseSize))
+            }
+        }
+        return RadarMap(baseTiles, overlayTiles, GRID + (x - tileX).toFloat(), GRID + (y - tileY).toFloat())
     }
 
     private suspend fun fetch(url: String): String = try {

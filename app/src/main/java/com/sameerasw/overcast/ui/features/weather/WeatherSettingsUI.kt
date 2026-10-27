@@ -290,9 +290,9 @@ fun WeatherSettingsUI(
                         }
                     }
                 }
-                AnimatedVisibility(visible = radarProviderId != RadarProviders.OFF_ID && radarStatus != null) {
+                AnimatedVisibility(visible = radarProviderId != RadarProviders.OFF_ID && radarStatus is RadarStatus.Failed) {
                     val shownStatus = remember { mutableStateOf(radarStatus) }
-                    if (radarStatus != null) shownStatus.value = radarStatus
+                    if (radarStatus is RadarStatus.Failed) shownStatus.value = radarStatus
                     val failed = shownStatus.value as? RadarStatus.Failed
                     val container = if (failed != null) MaterialTheme.colorScheme.errorContainer else MaterialTheme.colorScheme.secondaryContainer
                     val content = if (failed != null) MaterialTheme.colorScheme.onErrorContainer else MaterialTheme.colorScheme.onSecondaryContainer
@@ -308,7 +308,7 @@ fun WeatherSettingsUI(
                                 tint = content,
                             )
                             Text(
-                                text = failed?.let { radarErrorText(context, it.error) } ?: stringResource(R.string.radar_status_ok),
+                                text = failed?.let { radarErrorText(context, it.error) }.orEmpty(),
                                 style = MaterialTheme.typography.bodyMedium,
                                 color = content,
                             )
