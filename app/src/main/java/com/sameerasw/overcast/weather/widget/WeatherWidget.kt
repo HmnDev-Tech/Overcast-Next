@@ -221,6 +221,8 @@ object WeatherWidgetUpdater {
             runCatching { WeatherWidget().updateAll(app) }
             runCatching { HourlyWidget().updateAll(app) }
             runCatching { DailyWidget().updateAll(app) }
+            runCatching { NowcastWidget().updateAll(app) }
+            runCatching { AqiWidget().updateAll(app) }
         }
     }
 

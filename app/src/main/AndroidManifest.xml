@@ -7,6 +7,7 @@
     <uses-permission android:name="android.permission.ACCESS_COARSE_LOCATION" />
     <uses-permission android:name="android.permission.ACCESS_BACKGROUND_LOCATION" />
     <uses-permission android:name="android.permission.VIBRATE" />
+    <uses-permission android:name="android.permission.POST_NOTIFICATIONS" />
 
     <application
         android:name=".OvercastApp"
@@ -81,6 +82,30 @@
             <meta-data
                 android:name="android.appwidget.provider"
                 android:resource="@xml/daily_widget_info" />
+        </receiver>
+
+        <receiver
+            android:name=".weather.widget.NowcastWidgetReceiver"
+            android:exported="true"
+            android:label="@string/widget_nowcast_label">
+            <intent-filter>
+                <action android:name="android.appwidget.action.APPWIDGET_UPDATE" />
+            </intent-filter>
+            <meta-data
+                android:name="android.appwidget.provider"
+                android:resource="@xml/nowcast_widget_info" />
+        </receiver>
+
+        <receiver
+            android:name=".weather.widget.AqiWidgetReceiver"
+            android:exported="true"
+            android:label="@string/widget_aqi_label">
+            <intent-filter>
+                <action android:name="android.appwidget.action.APPWIDGET_UPDATE" />
+            </intent-filter>
+            <meta-data
+                android:name="android.appwidget.provider"
+                android:resource="@xml/aqi_widget_info" />
         </receiver>
 
         <service

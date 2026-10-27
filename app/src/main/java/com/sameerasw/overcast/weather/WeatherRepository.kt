@@ -69,6 +69,8 @@ object WeatherRepository {
         }
     }
 
+    fun lastFetchLocation(): WeatherLocation? = cache.lastFetchLocation
+
     suspend fun lastKnownLocation(context: Context): WeatherLocation? {
         val app = context.applicationContext
         ensureLoaded(app)
@@ -125,6 +127,7 @@ object WeatherRepository {
                 val snapshot = provider.fetch(location, config.apiKey)
                 cache = cache.copy(snapshot = snapshot, lastFetchKey = fetchKey, lastFetchLocation = location)
                 persist(app)
+                ForecastChangeTracker.record(current, snapshot)
                 _state.value = WeatherState(snapshot = snapshot)
                 WeatherWidgetUpdater.updateAll(app)
                 true

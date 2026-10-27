@@ -1,5 +1,6 @@
 package com.sameerasw.overcast
 
+import com.sameerasw.overcast.weather.notify.WeatherNotifications
 import android.app.Application
 import android.content.Context
 import com.sameerasw.overcast.utils.CompatibilityMode
@@ -28,6 +29,7 @@ class OvercastApp : Application() {
             WeatherRepository.ensureLoaded(applicationContext)
             WeatherWidgetUpdater.refreshPreview(applicationContext)
             WeatherScheduler.schedule(applicationContext, WeatherRepository.config(applicationContext).refreshIntervalMinutes)
+            WeatherNotifications.scheduleSummary(applicationContext)
         }
     }
 }

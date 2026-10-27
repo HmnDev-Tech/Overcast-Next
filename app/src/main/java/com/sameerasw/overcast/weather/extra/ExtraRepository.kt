@@ -7,7 +7,6 @@ import com.sameerasw.overcast.weather.provider.ProviderHttp
 import java.text.SimpleDateFormat
 import java.util.Calendar
 import java.util.Locale
-import kotlin.math.abs
 import kotlin.math.sqrt
 import org.json.JSONObject
 
@@ -23,6 +22,8 @@ data class RiverData(val todayM3s: Double, val peakM3s: Double, val peakDayMilli
 
 enum class ForecastConfidence { HIGH, MEDIUM, LOW }
 
+data class HistoryDay(val dayMillis: Long, val highC: Double, val normalHighC: Double?)
+
 data class InsightData(val normalHighC: Double?, val confidence: ForecastConfidence?)
 
 object ExtraRepository {
@@ -31,13 +32,15 @@ object ExtraRepository {
     private const val MIN_RIVER_M3S = 10.0
     private const val NORMAL_YEARS = 10
     private const val NORMAL_WINDOW_DAYS = 7
+    private const val HISTORY_DAYS = 30
 
     private class Entry<T>(val key: String, val at: Long, val value: T)
 
     @Volatile private var marineCache: Entry<MarineData?>? = null
     @Volatile private var riverCache: Entry<RiverData?>? = null
     @Volatile private var confidenceCache: Entry<ForecastConfidence?>? = null
-    @Volatile private var normalCache: Entry<Double?>? = null
+    @Volatile private var normalsCache: Entry<Map<Int, Double>>? = null
+    @Volatile private var historyCache: Entry<List<HistoryDay>?>? = null
 
     private fun key(loc: WeatherLocation) = "%.2f,%.2f".format(Locale.US, loc.latitude, loc.longitude)
 
@@ -91,11 +94,11 @@ object ExtraRepository {
         return InsightData(normal, confidence).takeIf { normal != null || confidence != null }
     }
 
-    // Mean daily high for this time of year over the last decade of ERA5 reanalysis.
-    private suspend fun normalHigh(loc: WeatherLocation): Double? {
+    // Mean daily high for every day of the year over the last decade of ERA5 reanalysis, smoothed over a two-week window.
+    private suspend fun normals(loc: WeatherLocation): Map<Int, Double> {
         val today = Calendar.getInstance()
         val key = key(loc) + ":" + today.get(Calendar.DAY_OF_YEAR)
-        cached(normalCache, key, CACHE_MS * 24)?.let { return it.value }
+        cached(normalsCache, key, CACHE_MS * 24)?.let { return it.value }
         val format = SimpleDateFormat("yyyy-MM-dd", Locale.US)
         val end = (today.clone() as Calendar).apply { add(Calendar.DAY_OF_YEAR, -NORMAL_WINDOW_DAYS - 7) }
         val start = (today.clone() as Calendar).apply { add(Calendar.YEAR, -NORMAL_YEARS) }
@@ -107,20 +110,54 @@ object ExtraRepository {
         ).optJSONObject("daily")
         val dates = daily?.optJSONArray("time")
         val highs = daily?.optJSONArray("temperature_2m_max")
-        val targetDay = today.get(Calendar.DAY_OF_YEAR)
-        val matches = mutableListOf<Double>()
+        val byDay = HashMap<Int, MutableList<Double>>()
         if (dates != null && highs != null) {
             val cal = Calendar.getInstance()
             for (i in 0 until dates.length()) {
                 if (highs.isNull(i)) continue
                 cal.time = format.parse(dates.getString(i)) ?: continue
-                val diff = abs(cal.get(Calendar.DAY_OF_YEAR) - targetDay).let { minOf(it, 365 - it) }
-                if (diff <= NORMAL_WINDOW_DAYS) matches += highs.getDouble(i)
+                byDay.getOrPut(cal.get(Calendar.DAY_OF_YEAR)) { mutableListOf() } += highs.getDouble(i)
             }
         }
-        val normal = matches.takeIf { it.size >= NORMAL_YEARS }?.average()
-        normalCache = Entry(key, System.currentTimeMillis(), normal)
-        return normal
+        val result = (1..366).associateWith { day ->
+            val values = (-NORMAL_WINDOW_DAYS..NORMAL_WINDOW_DAYS).flatMap { offset ->
+                byDay[((day - 1 + offset + 366) % 366) + 1].orEmpty()
+            }
+            if (values.size >= NORMAL_YEARS) values.average() else Double.NaN
+        }.filterValues { !it.isNaN() }
+        normalsCache = Entry(key, System.currentTimeMillis(), result)
+        return result
+    }
+
+    private suspend fun normalHigh(loc: WeatherLocation): Double? =
+        normals(loc)[Calendar.getInstance().get(Calendar.DAY_OF_YEAR)]
+
+    suspend fun recentVsNormal(context: Context): List<HistoryDay>? {
+        val loc = WeatherRepository.lastKnownLocation(context) ?: return null
+        val key = key(loc)
+        cached(historyCache, key, CACHE_MS * 6)?.let { return it.value }
+        val normals = runCatching { normals(loc) }.getOrDefault(emptyMap())
+        val daily = JSONObject(
+            ProviderHttp.get(
+                "https://api.open-meteo.com/v1/forecast?latitude=${loc.latitude}&longitude=${loc.longitude}" +
+                    "&daily=temperature_2m_max&past_days=$HISTORY_DAYS&forecast_days=1&timeformat=unixtime&timezone=auto",
+            ),
+        ).optJSONObject("daily")
+        val times = daily?.optJSONArray("time")
+        val highs = daily?.optJSONArray("temperature_2m_max")
+        val cal = Calendar.getInstance()
+        val days = if (times == null || highs == null) {
+            emptyList()
+        } else {
+            (0 until times.length()).filter { !highs.isNull(it) }.map { i ->
+                val millis = times.getLong(i) * 1000L
+                cal.timeInMillis = millis
+                HistoryDay(millis, highs.getDouble(i), normals[cal.get(Calendar.DAY_OF_YEAR)])
+            }
+        }
+        val result = days.takeIf { it.size >= 7 }
+        historyCache = Entry(key, System.currentTimeMillis(), result)
+        return result
     }
 
     // Spread of tomorrow's high across the ICON ensemble members: tight agreement means a dependable forecast.

@@ -13,12 +13,17 @@ import com.sameerasw.overcast.R
 import com.sameerasw.overcast.data.repository.SettingsRepository
 
 enum class MainSection(val key: String, val iconRes: Int, val titleRes: Int) {
+    TREND("section_trend", R.drawable.rounded_show_chart_24, R.string.trend_title),
     DETAILS("section_details", R.drawable.rounded_dashboard_24, R.string.section_details),
+    WIND("section_wind", R.drawable.rounded_explore_24, R.string.weather_detail_wind),
+    ACTIVITIES("section_activities", R.drawable.rounded_directions_run_24, R.string.activity_title),
     INSIGHTS("section_insights", R.drawable.rounded_insights_24, R.string.insights_title),
     RADAR("section_radar", R.drawable.rounded_radar_24, R.string.section_radar),
     AIR_QUALITY("section_air_quality", R.drawable.rounded_air_24, R.string.aqi_title),
     MARINE("section_marine", R.drawable.rounded_waves_24, R.string.marine_title),
     RIVER("section_river", R.drawable.rounded_flood_24, R.string.river_title),
+    HISTORY("section_history", R.drawable.rounded_history_24, R.string.history_title),
+    PLACES("section_places", R.drawable.rounded_location_city_24, R.string.places_title),
     SUN("section_sun", R.drawable.rounded_wb_sunny_24, R.string.section_sun),
 }
 

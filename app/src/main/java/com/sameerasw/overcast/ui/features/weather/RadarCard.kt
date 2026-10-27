@@ -49,6 +49,17 @@ import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.unit.Density
 import androidx.compose.ui.unit.IntOffset
 import androidx.compose.ui.unit.dp
+import androidx.compose.foundation.layout.Arrangement
+import androidx.compose.foundation.layout.Row
+import androidx.compose.foundation.layout.padding
+import androidx.compose.material3.Icon
+import androidx.compose.material3.Surface
+import androidx.compose.material3.Text
+import androidx.compose.ui.res.painterResource
+import androidx.compose.ui.platform.LocalView
+import com.sameerasw.overcast.R
+import com.sameerasw.overcast.utils.HapticUtil
+import kotlinx.coroutines.delay
 import coil.compose.AsyncImage
 import coil.request.ImageRequest
 import coil.size.Size as CoilSize
@@ -114,6 +125,8 @@ fun RadarSection(snapshot: WeatherSnapshot, palette: WeatherPalette, modifier: M
 private const val RADAR_TILES_ACROSS = 1.2f
 private const val MAX_RADAR_ZOOM = 4f
 private const val DOUBLE_TAP_ZOOM = 2.5f
+private const val LOOP_FRAME_MS = 600L
+private const val LOOP_HOLD_MS = 1800L
 
 // Inverts the light OSM tiles and dims them so the map sits under the dark UI.
 private val BaseMapFilter = ColorFilter.colorMatrix(
@@ -134,9 +147,19 @@ private val RainFilter = ColorFilter.colorMatrix(ColorMatrix().apply { setToSatu
 private fun RadarTiles(radar: RadarMap, palette: WeatherPalette) {
     val context = LocalContext.current
     val density = LocalDensity.current
+    val view = LocalView.current
     var scale by remember { mutableFloatStateOf(1f) }
     var pan by remember { mutableStateOf(Offset.Zero) }
     val halfSize = remember { floatArrayOf(0f, 0f) }
+    var frameIndex by remember(radar) { mutableIntStateOf(radar.frames.lastIndex) }
+    var playing by remember { mutableStateOf(true) }
+    LaunchedEffect(radar, playing) {
+        if (!playing || radar.frames.size < 2) return@LaunchedEffect
+        while (true) {
+            delay(if (frameIndex == radar.frames.lastIndex) LOOP_HOLD_MS else LOOP_FRAME_MS)
+            frameIndex = (frameIndex + 1) % radar.frames.size
+        }
+    }
     val scope = rememberCoroutineScope()
     var zoomJob by remember { mutableStateOf<Job?>(null) }
     val transformState = rememberTransformableState { zoomChange, panChange, _ ->
@@ -194,8 +217,12 @@ private fun RadarTiles(radar: RadarMap, palette: WeatherPalette) {
             radar.baseTiles.forEach { tile ->
                 MapTileImage(tile, unitPx, originX, originY, density, BaseMapFilter, 1f, context)
             }
-            radar.overlayTiles.forEach { tile ->
-                MapTileImage(tile, unitPx, originX, originY, density, RainFilter, 1f, context)
+            radar.frames.forEachIndexed { index, frame ->
+                // Every frame stays composed so Coil has them all loaded; only the current one is opaque.
+                val frameAlpha = if (index == frameIndex.coerceAtMost(radar.frames.lastIndex)) 1f else 0f
+                frame.tiles.forEach { tile ->
+                    MapTileImage(tile, unitPx, originX, originY, density, RainFilter, frameAlpha, context)
+                }
             }
         }
         Box(
@@ -210,6 +237,32 @@ private fun RadarTiles(radar: RadarMap, palette: WeatherPalette) {
                 .background(palette.accent)
                 .border(2.dp, Color.White, CircleShape),
         )
+        val frameTime = radar.frames.getOrNull(frameIndex)?.timeMillis
+        if (radar.frames.size > 1 && frameTime != null) {
+            Surface(
+                onClick = {
+                    HapticUtil.performVirtualKeyHaptic(view)
+                    playing = !playing
+                },
+                color = Color.Black.copy(alpha = 0.55f),
+                contentColor = Color.White,
+                shape = CircleShape,
+                modifier = Modifier.align(Alignment.BottomStart).padding(12.dp),
+            ) {
+                Row(
+                    Modifier.padding(horizontal = 12.dp, vertical = 6.dp),
+                    verticalAlignment = Alignment.CenterVertically,
+                    horizontalArrangement = Arrangement.spacedBy(6.dp),
+                ) {
+                    Icon(
+                        painterResource(if (playing) R.drawable.rounded_pause_24 else R.drawable.rounded_play_arrow_24),
+                        contentDescription = null,
+                        modifier = Modifier.size(16.dp),
+                    )
+                    Text(formatHour(context, frameTime), style = MaterialTheme.typography.labelMedium)
+                }
+            }
+        }
     }
 }
 

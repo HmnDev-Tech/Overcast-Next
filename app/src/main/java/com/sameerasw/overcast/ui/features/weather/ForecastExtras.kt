@@ -28,8 +28,17 @@ import androidx.compose.ui.graphics.compositeOver
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.res.painterResource
 import androidx.compose.ui.res.stringResource
+import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.dp
 import com.sameerasw.overcast.R
+import com.sameerasw.overcast.weather.Nowcast
+import com.sameerasw.overcast.weather.Nowcast.RAIN_THRESHOLD_MM
+import com.sameerasw.overcast.weather.ForecastChangeTracker
+import com.sameerasw.overcast.weather.ForecastChange
+import com.sameerasw.overcast.utils.HapticUtil
+import androidx.compose.ui.platform.LocalView
+import androidx.compose.runtime.collectAsState
+import androidx.compose.material3.IconButton
 import com.sameerasw.overcast.ui.core.sheets.OvercastBottomSheet
 import com.sameerasw.overcast.weather.WeatherDetailSlot
 import com.sameerasw.overcast.weather.WeatherFormat
@@ -41,7 +50,6 @@ import com.sameerasw.overcast.weather.model.WeatherSnapshot
 import kotlin.math.max
 import kotlin.math.roundToInt
 
-private const val RAIN_THRESHOLD_MM = 0.1
 
 enum class StormRisk { LOW, MODERATE, HIGH, VERY_HIGH }
 
@@ -69,48 +77,105 @@ internal fun formatDuration(context: Context, seconds: Double): String {
     return context.getString(R.string.duration_hours_minutes, minutes / 60, minutes % 60)
 }
 
-private fun nowcastMessage(context: Context, slots: List<MinutelyPrecipitation>, now: Long): String? {
-    if (slots.isEmpty()) return null
-    fun minutesUntil(slot: MinutelyPrecipitation) = max(0L, (slot.timeMillis - now) / 60_000L).toInt()
-    val rainingNow = slots.first().mm >= RAIN_THRESHOLD_MM
-    return if (rainingNow) {
-        val stop = slots.firstOrNull { it.mm < RAIN_THRESHOLD_MM }
-        if (stop == null) context.getString(R.string.nowcast_rain_continuing) else context.getString(R.string.nowcast_rain_stopping, max(5, minutesUntil(stop)))
-    } else {
-        slots.firstOrNull { it.mm >= RAIN_THRESHOLD_MM }?.let { context.getString(R.string.nowcast_rain_starting, max(5, minutesUntil(it))) }
-    }
-}
 
 @Composable
 fun NowcastBanner(snapshot: WeatherSnapshot, palette: WeatherPalette, modifier: Modifier = Modifier) {
     val context = LocalContext.current
     val now by rememberMinuteClock()
     val slots = snapshot.extras?.minutely.orEmpty().filter { it.timeMillis + 15 * 60_000L > now }
-    val message = remember(slots, now) { nowcastMessage(context, slots, now) } ?: return
-    val peak = slots.maxOf { it.mm }.coerceAtLeast(1.0)
+    val message = remember(slots, now) { Nowcast.message(context, slots, now) } ?: return
     Surface(
         color = palette.card,
         shape = MaterialTheme.shapes.extraLarge,
         modifier = modifier.rainSurface("nowcast").fillMaxWidth(),
     ) {
-        Column(Modifier.padding(20.dp), verticalArrangement = Arrangement.spacedBy(12.dp)) {
+        Column(Modifier.padding(20.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
             Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(12.dp)) {
                 Icon(painterResource(R.drawable.rounded_rainy_24), contentDescription = null, tint = palette.accent, modifier = Modifier.size(24.dp))
                 Text(message, color = palette.onBase, style = MaterialTheme.typography.titleMedium)
             }
-            Canvas(Modifier.fillMaxWidth().height(36.dp)) {
-                val gap = 6.dp.toPx()
-                val barWidth = (size.width - gap * (slots.size - 1)) / slots.size
+            Canvas(Modifier.fillMaxWidth().height(40.dp)) {
+                val slotWidth = size.width / slots.size
+                val barWidth = (slotWidth * 0.5f).coerceAtMost(14.dp.toPx())
+                val dot = 4.dp.toPx()
                 slots.forEachIndexed { index, slot ->
-                    val fraction = (slot.mm / peak).toFloat().coerceIn(0f, 1f)
-                    val barHeight = max(3.dp.toPx(), size.height * fraction)
-                    drawRoundRect(
-                        color = if (slot.mm >= RAIN_THRESHOLD_MM) palette.accent else palette.onBaseMuted.copy(alpha = 0.25f),
-                        topLeft = Offset(index * (barWidth + gap), size.height - barHeight),
-                        size = Size(barWidth, barHeight),
-                        cornerRadius = CornerRadius(barWidth / 2, barWidth / 2),
+                    val centerX = slotWidth * (index + 0.5f)
+                    val level = when {
+                        slot.mm < RAIN_THRESHOLD_MM -> 0f
+                        slot.mm < 0.5 -> 0.4f
+                        slot.mm < 2.0 -> 0.7f
+                        else -> 1f
+                    }
+                    if (level == 0f) {
+                        drawCircle(palette.onBaseMuted.copy(alpha = 0.35f), radius = dot / 2, center = Offset(centerX, size.height - dot / 2))
+                    } else {
+                        val barHeight = size.height * level
+                        drawRoundRect(
+                            color = palette.accent,
+                            topLeft = Offset(centerX - barWidth / 2, size.height - barHeight),
+                            size = Size(barWidth, barHeight),
+                            cornerRadius = CornerRadius(barWidth / 2, barWidth / 2),
+                        )
+                    }
+                }
+            }
+            Row(Modifier.fillMaxWidth()) {
+                listOf(R.string.nowcast_now, R.string.nowcast_hour, R.string.nowcast_two_hours).forEachIndexed { index, label ->
+                    Text(
+                        stringResource(label),
+                        color = palette.onBaseMuted,
+                        style = MaterialTheme.typography.labelSmall,
+                        textAlign = when (index) {
+                            0 -> TextAlign.Start
+                            1 -> TextAlign.Center
+                            else -> TextAlign.End
+                        },
+                        modifier = Modifier.weight(1f),
                     )
                 }
+            }
+        }
+    }
+}
+
+@Composable
+fun ChangesBanner(units: WeatherUnits, palette: WeatherPalette, modifier: Modifier = Modifier) {
+    val context = LocalContext.current
+    val view = LocalView.current
+    val latest by ForecastChangeTracker.latest.collectAsState()
+    val now by rememberMinuteClock()
+    val changes = latest?.takeIf { now - it.detectedAt < ForecastChangeTracker.SHOW_FOR_MS } ?: return
+    fun time(millis: Long?) = millis?.let { formatHour(context, it) }
+    val lines = changes.changes.map { change ->
+        when (change) {
+            is ForecastChange.RainTiming -> when {
+                change.currentMillis == null -> context.getString(R.string.change_rain_cleared)
+                change.previousMillis == null -> context.getString(R.string.change_rain_new, time(change.currentMillis))
+                else -> context.getString(R.string.change_rain_moved, time(change.currentMillis), time(change.previousMillis))
+            }
+            is ForecastChange.TodayHigh -> context.getString(
+                R.string.change_high,
+                WeatherFormat.temperature(change.currentC, units.temperature),
+                WeatherFormat.temperature(change.previousC, units.temperature),
+            )
+        }
+    }
+    Surface(
+        color = palette.card,
+        shape = MaterialTheme.shapes.extraLarge,
+        modifier = modifier.rainSurface("changes").fillMaxWidth(),
+    ) {
+        Row(Modifier.padding(start = 20.dp, top = 16.dp, bottom = 16.dp, end = 8.dp), verticalAlignment = Alignment.CenterVertically) {
+            Icon(painterResource(R.drawable.rounded_history_24), contentDescription = null, tint = palette.accent, modifier = Modifier.size(24.dp))
+            Column(Modifier.weight(1f).padding(horizontal = 12.dp), verticalArrangement = Arrangement.spacedBy(4.dp)) {
+                Text(stringResource(R.string.change_title), color = palette.onBaseMuted, style = MaterialTheme.typography.labelMedium)
+                lines.forEach { Text(it, color = palette.onBase, style = MaterialTheme.typography.bodyMedium) }
+            }
+            IconButton(onClick = {
+                HapticUtil.performVirtualKeyHaptic(view)
+                ForecastChangeTracker.dismiss()
+            }) {
+                Icon(painterResource(R.drawable.rounded_close_24), contentDescription = null, tint = palette.onBaseMuted, modifier = Modifier.size(20.dp))
             }
         }
     }

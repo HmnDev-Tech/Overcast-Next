@@ -9,6 +9,13 @@
 
 package com.sameerasw.overcast.ui.features.weather
 
+import android.Manifest
+import android.os.Build
+import android.text.format.DateFormat
+import androidx.activity.compose.rememberLauncherForActivityResult
+import androidx.activity.result.contract.ActivityResultContracts
+import com.sameerasw.overcast.weather.notify.WeatherNotifications
+import java.util.Calendar
 import android.content.ClipboardManager
 import android.content.Context
 import android.content.Intent
@@ -534,6 +541,72 @@ fun WeatherSettingsUI(
                 }
             }
 
+            SectionTitle(R.string.notify_section)
+            RoundedCardContainer(spacing = 2.dp, cornerRadius = 24.dp) {
+                var summary by remember { mutableStateOf(settings.isMorningSummaryEnabled() && WeatherNotifications.canPost(context)) }
+                var summaryHour by remember { mutableIntStateOf(settings.getMorningSummaryHour()) }
+                var rainAlerts by remember { mutableStateOf(settings.isRainAlertEnabled() && WeatherNotifications.canPost(context)) }
+                var pendingToggle by remember { mutableStateOf<((Boolean) -> Unit)?>(null) }
+                val notificationLauncher = rememberLauncherForActivityResult(ActivityResultContracts.RequestPermission()) { granted ->
+                    pendingToggle?.invoke(granted)
+                    pendingToggle = null
+                }
+                fun withPermission(apply: (Boolean) -> Unit) {
+                    if (WeatherNotifications.canPost(context) || Build.VERSION.SDK_INT < Build.VERSION_CODES.TIRAMISU) {
+                        apply(true)
+                    } else {
+                        pendingToggle = apply
+                        notificationLauncher.launch(Manifest.permission.POST_NOTIFICATIONS)
+                    }
+                }
+                IconToggleItem(
+                    iconRes = R.drawable.rounded_notifications_24,
+                    title = stringResource(R.string.notify_morning_summary),
+                    isChecked = summary,
+                    onCheckedChange = { checked ->
+                        HapticUtil.performVirtualKeyHaptic(view)
+                        val apply: (Boolean) -> Unit = { allowed ->
+                            summary = checked && allowed
+                            settings.setMorningSummaryEnabled(summary)
+                            WeatherNotifications.scheduleSummary(context)
+                        }
+                        if (checked) withPermission(apply) else apply(true)
+                    },
+                )
+                AnimatedVisibility(visible = summary) {
+                    ConfigPickerItem(
+                        title = stringResource(R.string.notify_summary_time),
+                        selectedValue = hourLabel(context, summaryHour),
+                        iconRes = R.drawable.rounded_schedule_24,
+                        modifier = Modifier.fillMaxWidth(),
+                    ) {
+                        (5..11).forEach { hour ->
+                            SegmentedDropdownMenuItem(
+                                text = { Text(hourLabel(context, hour)) },
+                                onClick = {
+                                    summaryHour = hour
+                                    settings.setMorningSummaryHour(hour)
+                                    WeatherNotifications.scheduleSummary(context)
+                                },
+                            )
+                        }
+                    }
+                }
+                IconToggleItem(
+                    iconRes = R.drawable.rounded_rainy_24,
+                    title = stringResource(R.string.notify_rain_alert),
+                    isChecked = rainAlerts,
+                    onCheckedChange = { checked ->
+                        HapticUtil.performVirtualKeyHaptic(view)
+                        val apply: (Boolean) -> Unit = { allowed ->
+                            rainAlerts = checked && allowed
+                            settings.setRainAlertEnabled(rainAlerts)
+                        }
+                        if (checked) withPermission(apply) else apply(true)
+                    },
+                )
+            }
+
             SectionTitle(R.string.weather_section_screensaver)
             RoundedCardContainer(spacing = 2.dp, cornerRadius = 24.dp) {
                 IconToggleItem(
@@ -651,6 +724,14 @@ private fun radarErrorText(context: Context, error: RadarException): String = co
         RadarException.Reason.BAD_RESPONSE -> R.string.radar_error_unknown
     },
 )
+
+private fun hourLabel(context: Context, hour: Int): String {
+    val time = Calendar.getInstance().apply {
+        set(Calendar.HOUR_OF_DAY, hour)
+        set(Calendar.MINUTE, 0)
+    }
+    return DateFormat.getTimeFormat(context).format(time.time)
+}
 
 private fun intervalLabel(context: Context, minutes: Int): String =
     if (minutes < 60) {

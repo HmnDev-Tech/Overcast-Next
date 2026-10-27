@@ -182,7 +182,7 @@ class OpenMeteoProvider : WeatherProvider {
     }
 
     // https://open-meteo.com/en/docs (WMO weather interpretation codes)
-    private fun conditionFor(code: Int): WeatherCondition = when (code) {
+    internal fun conditionFor(code: Int): WeatherCondition = when (code) {
         0, 1 -> WeatherCondition.CLEAR
         2 -> WeatherCondition.PARTLY_CLOUDY
         3 -> WeatherCondition.CLOUDY
