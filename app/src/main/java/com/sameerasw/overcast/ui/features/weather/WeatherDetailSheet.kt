@@ -306,6 +306,7 @@ fun WeatherScreen(onOpenSettings: () -> Unit = {}) {
     val leftFixedBottom = remember { mutableIntStateOf(0) }
     val rightFixedBottom = remember { mutableIntStateOf(0) }
     val footerHeight = remember { mutableIntStateOf(0) }
+    val placesHeight = remember { mutableIntStateOf(0) }
 
     val requestLocation = rememberLocationPermissionRequest { granted ->
         if (granted) scope.launch { WeatherRepository.refresh(context, force = true) }
@@ -599,8 +600,8 @@ fun WeatherScreen(onOpenSettings: () -> Unit = {}) {
                                         if (MainSection.MARINE in visibleSections) MarineSection(state.snapshot ?: snapshot, units, palette, Modifier.padding(horizontal = SIDE_PADDING))
                                         if (MainSection.RIVER in visibleSections) RiverSection(state.snapshot ?: snapshot, palette, Modifier.padding(horizontal = SIDE_PADDING))
                                         if (MainSection.HISTORY in visibleSections) HistorySection(state.snapshot ?: snapshot, units, palette, Modifier.padding(horizontal = SIDE_PADDING))
-                                        if (MainSection.PLACES in visibleSections) PlacesSection(snapshot, units, palette, ::selectPlace, Modifier.padding(horizontal = SIDE_PADDING))
                                         if (MainSection.SUN in visibleSections) SunSection(snapshot, palette, Modifier.padding(horizontal = SIDE_PADDING))
+                                        if (MainSection.PLACES in visibleSections) PlacesSection(snapshot, units, palette, ::selectPlace, Modifier.padding(horizontal = SIDE_PADDING))
                                         Footer(
                                             modifier = Modifier.padding(horizontal = SIDE_PADDING).rainSurface("footer"),
                                             snapshot = snapshot,
@@ -627,7 +628,8 @@ fun WeatherScreen(onOpenSettings: () -> Unit = {}) {
                                         val placedLeft = remember { HashMap<MainSection, Boolean>() }
                                         val floatingSections = BALANCED_SECTIONS.filter { it in visibleSections }
                                         var left = leftFixedBottom.intValue
-                                        var right = rightFixedBottom.intValue + footerHeight.intValue + gapPx
+                                        var right = rightFixedBottom.intValue + footerHeight.intValue + gapPx +
+                                            (if (MainSection.PLACES in visibleSections) placesHeight.intValue else 0)
                                         val leftSections = mutableListOf<MainSection>()
                                         val rightSections = mutableListOf<MainSection>()
                                         // Greedy fill of the shorter column; the slack keeps a card where it is when the columns are nearly level.
@@ -652,7 +654,6 @@ fun WeatherScreen(onOpenSettings: () -> Unit = {}) {
                                                     MainSection.SUN -> SunSection(snapshot, palette, sectionModifier)
                                                     MainSection.WIND -> WindSection(snapshot, units, palette, sectionModifier)
                                                     MainSection.HISTORY -> HistorySection(live, units, palette, sectionModifier)
-                                                    MainSection.PLACES -> PlacesSection(snapshot, units, palette, ::selectPlace, sectionModifier)
                                                     MainSection.ACTIVITIES -> ActivitySection(snapshot, palette, sectionModifier)
                                                     MainSection.INSIGHTS -> InsightsSection(live, units, palette, sectionModifier)
                                                     MainSection.RADAR -> RadarSection(live, palette, sectionModifier)
@@ -697,6 +698,9 @@ fun WeatherScreen(onOpenSettings: () -> Unit = {}) {
                                                     if (MainSection.DETAILS in visibleSections) DetailsSection(snapshot, units, palette, Modifier.padding(horizontal = SIDE_PADDING))
                                                 }
                                                 rightSections.forEach { section -> key(section) { balancedSection(section) } }
+                                                if (MainSection.PLACES in visibleSections) {
+                                                    PlacesSection(snapshot, units, palette, ::selectPlace, Modifier.onSizeChanged { placesHeight.intValue = it.height }.padding(top = 20.dp).padding(horizontal = SIDE_PADDING))
+                                                }
                                                 Footer(
                                                     modifier = Modifier
                                                         .padding(top = 20.dp)
@@ -896,7 +900,6 @@ private val BALANCED_SECTIONS = listOf(
     MainSection.MARINE,
     MainSection.RIVER,
     MainSection.HISTORY,
-    MainSection.PLACES,
 )
 private const val CONTENT_FADE_MS = 500
 private const val EFFECTS_DELAY_MS = 450L
