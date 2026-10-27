@@ -288,6 +288,7 @@ fun WeatherScreen(onOpenSettings: () -> Unit = {}) {
     val effectSpec = presentation.effectSpec
     val effectHaptics = presentation.haptics
     val advice = rememberAiAdvice(state.snapshot, units)
+    val visibleSections = rememberVisibleSections()
 
     val requestLocation = rememberLocationPermissionRequest { granted ->
         if (granted) scope.launch { WeatherRepository.refresh(context, force = true) }
@@ -570,13 +571,13 @@ fun WeatherScreen(onOpenSettings: () -> Unit = {}) {
                                         HourlySection(snapshot, units.temperature, palette, units = units)
                                         snapshot.upcomingDays().takeIf { it.isNotEmpty() }
                                             ?.let { DailySection(it, units, palette, Modifier.padding(horizontal = SIDE_PADDING)) }
-                                        DetailsSection(snapshot, units, palette, Modifier.padding(horizontal = SIDE_PADDING))
-                                        InsightsSection(state.snapshot ?: snapshot, units, palette, Modifier.padding(horizontal = SIDE_PADDING))
-                                        RadarSection(state.snapshot ?: snapshot, palette, Modifier.padding(horizontal = SIDE_PADDING))
-                                        AqiSection(state.snapshot ?: snapshot, palette, Modifier.padding(horizontal = SIDE_PADDING))
-                                        MarineSection(state.snapshot ?: snapshot, units, palette, Modifier.padding(horizontal = SIDE_PADDING))
-                                        RiverSection(state.snapshot ?: snapshot, palette, Modifier.padding(horizontal = SIDE_PADDING))
-                                        SunSection(snapshot, palette, Modifier.padding(horizontal = SIDE_PADDING))
+                                        if (MainSection.DETAILS in visibleSections) DetailsSection(snapshot, units, palette, Modifier.padding(horizontal = SIDE_PADDING))
+                                        if (MainSection.INSIGHTS in visibleSections) InsightsSection(state.snapshot ?: snapshot, units, palette, Modifier.padding(horizontal = SIDE_PADDING))
+                                        if (MainSection.RADAR in visibleSections) RadarSection(state.snapshot ?: snapshot, palette, Modifier.padding(horizontal = SIDE_PADDING))
+                                        if (MainSection.AIR_QUALITY in visibleSections) AqiSection(state.snapshot ?: snapshot, palette, Modifier.padding(horizontal = SIDE_PADDING))
+                                        if (MainSection.MARINE in visibleSections) MarineSection(state.snapshot ?: snapshot, units, palette, Modifier.padding(horizontal = SIDE_PADDING))
+                                        if (MainSection.RIVER in visibleSections) RiverSection(state.snapshot ?: snapshot, palette, Modifier.padding(horizontal = SIDE_PADDING))
+                                        if (MainSection.SUN in visibleSections) SunSection(snapshot, palette, Modifier.padding(horizontal = SIDE_PADDING))
                                         Footer(
                                             modifier = Modifier.padding(horizontal = SIDE_PADDING).rainSurface("footer"),
                                             snapshot = snapshot,
@@ -609,7 +610,7 @@ fun WeatherScreen(onOpenSettings: () -> Unit = {}) {
                                             NowcastBanner(snapshot, palette, Modifier.padding(horizontal = SIDE_PADDING))
                                             snapshot.upcomingDays().takeIf { it.isNotEmpty() }
                                                 ?.let { DailySection(it, units, palette, Modifier.padding(horizontal = SIDE_PADDING)) }
-                                            SunSection(snapshot, palette, Modifier.padding(horizontal = SIDE_PADDING))
+                                            if (MainSection.SUN in visibleSections) SunSection(snapshot, palette, Modifier.padding(horizontal = SIDE_PADDING))
                                             }
                                             if (hingeFraction > 0f) Spacer(Modifier.weight(hingeFraction))
                                             Column(
@@ -620,12 +621,12 @@ fun WeatherScreen(onOpenSettings: () -> Unit = {}) {
                                                 verticalArrangement = Arrangement.spacedBy(20.dp),
                                             ) {
                                             HourlySection(snapshot, units.temperature, palette, units = units)
-                                            DetailsSection(snapshot, units, palette, Modifier.padding(horizontal = SIDE_PADDING))
-                                            InsightsSection(state.snapshot ?: snapshot, units, palette, Modifier.padding(horizontal = SIDE_PADDING))
-                                            RadarSection(state.snapshot ?: snapshot, palette, Modifier.padding(horizontal = SIDE_PADDING))
-                                            AqiSection(state.snapshot ?: snapshot, palette, Modifier.padding(horizontal = SIDE_PADDING))
-                                            MarineSection(state.snapshot ?: snapshot, units, palette, Modifier.padding(horizontal = SIDE_PADDING))
-                                            RiverSection(state.snapshot ?: snapshot, palette, Modifier.padding(horizontal = SIDE_PADDING))
+                                            if (MainSection.DETAILS in visibleSections) DetailsSection(snapshot, units, palette, Modifier.padding(horizontal = SIDE_PADDING))
+                                            if (MainSection.INSIGHTS in visibleSections) InsightsSection(state.snapshot ?: snapshot, units, palette, Modifier.padding(horizontal = SIDE_PADDING))
+                                            if (MainSection.RADAR in visibleSections) RadarSection(state.snapshot ?: snapshot, palette, Modifier.padding(horizontal = SIDE_PADDING))
+                                            if (MainSection.AIR_QUALITY in visibleSections) AqiSection(state.snapshot ?: snapshot, palette, Modifier.padding(horizontal = SIDE_PADDING))
+                                            if (MainSection.MARINE in visibleSections) MarineSection(state.snapshot ?: snapshot, units, palette, Modifier.padding(horizontal = SIDE_PADDING))
+                                            if (MainSection.RIVER in visibleSections) RiverSection(state.snapshot ?: snapshot, palette, Modifier.padding(horizontal = SIDE_PADDING))
                                             Footer(
                                                 modifier = Modifier.padding(horizontal = SIDE_PADDING).rainSurface("footer"),
                                                 snapshot = snapshot,

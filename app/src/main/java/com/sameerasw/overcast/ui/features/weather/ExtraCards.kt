@@ -163,7 +163,7 @@ fun InsightsSection(snapshot: WeatherSnapshot, units: WeatherUnits, palette: Wea
                         diff > 0 -> context.getString(R.string.insight_warmer, amount)
                         else -> context.getString(R.string.insight_cooler, amount)
                     }
-                    add(Detail(WeatherDetailSlot.DEW_POINT, R.string.insight_vs_usual, text))
+                    add(Detail(WeatherDetailSlot.TEMPERATURE, R.string.insight_vs_usual, text))
                 }
                 insight.confidence?.let {
                     val label = when (it) {

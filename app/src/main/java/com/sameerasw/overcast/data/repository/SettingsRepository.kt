@@ -2,6 +2,7 @@ package com.sameerasw.overcast.data.repository
 
 import android.content.Context
 import android.content.SharedPreferences
+import com.sameerasw.overcast.ui.features.weather.MainSection
 import com.sameerasw.overcast.utils.CompatibilityFeature
 import com.sameerasw.overcast.utils.CompatibilityMode
 import com.sameerasw.overcast.utils.DeviceUtils
@@ -238,6 +239,9 @@ class SettingsRepository(
 
     fun getAqiProvider(): String = getString(KEY_AQI_PROVIDER, AqiProviders.OPEN_METEO_ID) ?: AqiProviders.OPEN_METEO_ID
     fun setAqiProvider(id: String) = putString(KEY_AQI_PROVIDER, id)
+
+    fun isMainSectionVisible(section: MainSection): Boolean = getBoolean(section.key, true)
+    fun setMainSectionVisible(section: MainSection, visible: Boolean) = putBoolean(section.key, visible)
 
     fun getRadarProvider(): String = getString(KEY_RADAR_PROVIDER, RadarProviders.OFF_ID) ?: RadarProviders.OFF_ID
     fun setRadarProvider(id: String) = putString(KEY_RADAR_PROVIDER, id)

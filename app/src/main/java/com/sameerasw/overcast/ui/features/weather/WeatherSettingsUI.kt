@@ -112,6 +112,7 @@ fun WeatherSettingsUI(
     var unitsExpanded by remember { mutableStateOf(false) }
     var showCompatibilityInfo by remember { mutableStateOf(false) }
     var showLocations by remember { mutableStateOf(false) }
+    var showSections by remember { mutableStateOf(false) }
     var effects by remember { mutableStateOf(settings.isWeatherEffectsEnabled()) }
     var weatherHaptics by remember { mutableStateOf(settings.isWeatherHapticsEnabled()) }
     var refreshMinutes by remember { mutableIntStateOf(settings.getWeatherRefreshMinutes()) }
@@ -477,6 +478,12 @@ fun WeatherSettingsUI(
                     )
                 }
                 IconToggleItem(
+                    iconRes = R.drawable.rounded_visibility_24,
+                    title = stringResource(R.string.what_to_show_title),
+                    showToggle = false,
+                    onClick = { showSections = true },
+                )
+                IconToggleItem(
                     iconRes = R.drawable.rounded_rainy_24,
                     title = stringResource(R.string.weather_effects_title),
                     isChecked = effects,
@@ -564,6 +571,42 @@ fun WeatherSettingsUI(
 
     if (showCompatibilityInfo) {
         CompatibilityInfoSheet(onDismiss = { showCompatibilityInfo = false })
+    }
+    if (showSections) {
+        SectionsSheet(settings, onDismiss = { showSections = false })
+    }
+}
+
+@Composable
+private fun SectionsSheet(settings: SettingsRepository, onDismiss: () -> Unit) {
+    val view = LocalView.current
+    OvercastBottomSheet(onDismissRequest = onDismiss) {
+        Column(
+            modifier = Modifier.fillMaxWidth().padding(horizontal = 16.dp, vertical = 8.dp),
+            verticalArrangement = Arrangement.spacedBy(16.dp),
+        ) {
+            Text(
+                text = stringResource(R.string.what_to_show_title),
+                style = MaterialTheme.typography.headlineSmall,
+                modifier = Modifier.padding(horizontal = 8.dp),
+            )
+            RoundedCardContainer(spacing = 2.dp, cornerRadius = 24.dp) {
+                MainSection.entries.forEach { section ->
+                    var visible by remember { mutableStateOf(settings.isMainSectionVisible(section)) }
+                    IconToggleItem(
+                        iconRes = section.iconRes,
+                        title = stringResource(section.titleRes),
+                        isChecked = visible,
+                        onCheckedChange = {
+                            HapticUtil.performVirtualKeyHaptic(view)
+                            visible = it
+                            settings.setMainSectionVisible(section, it)
+                        },
+                    )
+                }
+            }
+            Spacer(Modifier.size(8.dp))
+        }
     }
 }
 

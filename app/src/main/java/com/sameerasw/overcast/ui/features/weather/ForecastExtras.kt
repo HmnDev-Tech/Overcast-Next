@@ -117,7 +117,7 @@ fun NowcastBanner(snapshot: WeatherSnapshot, palette: WeatherPalette, modifier: 
 }
 
 internal fun hourDetails(context: Context, hour: HourlyForecast, units: WeatherUnits): List<Detail> = buildList {
-    hour.feelsLikeC?.let { add(Detail(WeatherDetailSlot.DEW_POINT, R.string.weather_detail_feels_like, WeatherFormat.temperature(it, units.temperature))) }
+    hour.feelsLikeC?.let { add(Detail(WeatherDetailSlot.TEMPERATURE, R.string.weather_detail_feels_like, WeatherFormat.temperature(it, units.temperature))) }
     add(Detail(WeatherDetailSlot.RAIN_CHANCE, R.string.weather_detail_rain_chance, "${hour.chanceOfRain}%"))
     hour.precipitationMm?.let { add(Detail(WeatherDetailSlot.PRECIPITATION, R.string.weather_detail_precipitation, WeatherFormat.precipitation(it, units.precipitation))) }
     hour.snowfallCm?.takeIf { it > 0 }?.let { add(Detail(WeatherDetailSlot.PRECIPITATION, R.string.weather_detail_snowfall, "%.1f cm".format(it))) }

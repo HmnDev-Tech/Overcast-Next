@@ -251,4 +251,8 @@
     <string name="insight_warmer">%1$s warmer</string>
     <string name="insight_cooler">%1$s cooler</string>
     <string name="insight_confidence">Forecast confidence</string>
+    <string name="what_to_show_title">What to show</string>
+    <string name="section_details">Weather details</string>
+    <string name="section_radar">Rain radar</string>
+    <string name="section_sun">Sun and moon</string>
 </resources>
