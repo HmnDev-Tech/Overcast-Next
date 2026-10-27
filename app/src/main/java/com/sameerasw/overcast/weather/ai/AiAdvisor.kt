@@ -43,7 +43,8 @@ object AiAdvisor {
             append("rain chance ${snapshot.chanceOfRain ?: 0}%, ")
             append("today high ${temp(snapshot.todayHighC())} low ${temp(snapshot.todayLowC())}. ")
             if (alerts.isNotBlank()) append("Alerts: $alerts. ")
-            append("Reply in $lang, max 90 words, as short bullet lines with emoji: ")
+            append("Reply in $lang, max 90 words. Plain text only, no markdown, no asterisks or bullet symbols. ")
+            append("Write 4 short lines, each starting with one emoji: ")
             append("what to wear, take an umbrella or not, best time to go out, one health tip.")
         }
     }

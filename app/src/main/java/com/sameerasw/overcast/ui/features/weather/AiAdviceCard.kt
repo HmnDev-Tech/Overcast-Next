@@ -31,6 +31,11 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.res.painterResource
 import androidx.compose.ui.res.stringResource
+import androidx.compose.ui.text.AnnotatedString
+import androidx.compose.ui.text.SpanStyle
+import androidx.compose.ui.text.buildAnnotatedString
+import androidx.compose.ui.text.font.FontWeight
+import androidx.compose.ui.text.withStyle
 import androidx.compose.ui.unit.dp
 import com.sameerasw.overcast.R
 import com.sameerasw.overcast.data.repository.SettingsRepository
@@ -99,13 +104,39 @@ fun AiAdviceSection(snapshot: WeatherSnapshot, units: WeatherUnits, palette: Wea
                         style = MaterialTheme.typography.titleMedium,
                     )
                 }
-                advice?.let {
-                    Text(it, color = palette.onBase, style = MaterialTheme.typography.bodyMedium)
+                advice?.let { text ->
+                    Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
+                        adviceLines(text).forEach { line ->
+                            Text(line, color = palette.onBase, style = MaterialTheme.typography.bodyMedium)
+                        }
+                    }
                 }
             }
         }
     }
 }
+
+private val HEADING_MARKER = Regex("^#+\\s*")
+private val LIST_MARKER = Regex("^(?:[*\\-•+]|\\d+[.)])\\s+")
+private val BOLD = Regex("\\*\\*(.+?)\\*\\*|__(.+?)__")
+
+private fun adviceLines(text: String): List<AnnotatedString> =
+    text.lines()
+        .map { it.trim().replace(HEADING_MARKER, "").replace(LIST_MARKER, "").trim() }
+        .filter { it.isNotBlank() }
+        .map { line ->
+            buildAnnotatedString {
+                var last = 0
+                BOLD.findAll(line).forEach { match ->
+                    append(line.substring(last, match.range.first).replace("*", ""))
+                    withStyle(SpanStyle(fontWeight = FontWeight.SemiBold)) {
+                        append(match.groupValues[1].ifEmpty { match.groupValues[2] })
+                    }
+                    last = match.range.last + 1
+                }
+                append(line.substring(last).replace("*", ""))
+            }
+        }
 
 @Composable
 internal fun aiErrorText(error: AiException): String {
