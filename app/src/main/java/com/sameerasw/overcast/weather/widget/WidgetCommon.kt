@@ -4,10 +4,10 @@ import android.content.Intent
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.remember
 import androidx.compose.ui.graphics.Color
-import androidx.compose.ui.graphics.toArgb
 import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.dp
 import androidx.glance.GlanceModifier
+import androidx.glance.ColorFilter
 import androidx.glance.GlanceTheme
 import androidx.glance.Image
 import androidx.glance.ImageProvider
@@ -40,9 +40,13 @@ internal fun resolveSpacing(context: android.content.Context, appWidgetId: Int, 
 internal fun widgetTextColor(mode: WidgetBackground): ColorProvider =
     if (mode == WidgetBackground.MATERIAL) GlanceTheme.colors.onSurface else ColorProvider(Color.White)
 
+// Text is baked into bitmaps in white; Material mode tints them at render time so the launcher picks the
+// light or dark onSurface itself instead of whatever theme the app process happened to resolve.
+internal const val WIDGET_TEXT_ARGB = android.graphics.Color.WHITE
+
 @Composable
-internal fun widgetTextArgb(mode: WidgetBackground): Int =
-    if (mode == WidgetBackground.MATERIAL) widgetTextColor(mode).getColor(LocalContext.current).toArgb() else android.graphics.Color.WHITE
+internal fun widgetTextTint(mode: WidgetBackground): ColorFilter? =
+    if (mode == WidgetBackground.MATERIAL) ColorFilter.tint(GlanceTheme.colors.onSurface) else null
 
 @Composable
 internal fun WidgetSurface(

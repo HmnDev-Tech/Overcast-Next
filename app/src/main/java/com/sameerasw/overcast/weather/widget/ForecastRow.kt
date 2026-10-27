@@ -79,7 +79,8 @@ internal fun ForecastRow(
     val density = resources.displayMetrics.density
     val fontScale = resources.configuration.fontScale
     val textColor = widgetTextColor(mode)
-    val textArgb = widgetTextArgb(mode)
+    val textArgb = WIDGET_TEXT_ARGB
+    val textTint = widgetTextTint(mode)
     val shadow = mode == WidgetBackground.NONE
     val hasSecondary = items.any { it.secondary != null }
 
@@ -115,7 +116,7 @@ internal fun ForecastRow(
                 horizontalAlignment = Alignment.CenterHorizontally,
                 verticalAlignment = Alignment.CenterVertically,
             ) {
-                Image(provider = ImageProvider(labelBitmap), contentDescription = item.label)
+                Image(provider = ImageProvider(labelBitmap), contentDescription = item.label, colorFilter = textTint)
                 Spacer(GlanceModifier.height(gap))
                 Image(
                     provider = ImageProvider(item.icon),
@@ -128,6 +129,7 @@ internal fun ForecastRow(
                     provider = ImageProvider(primaryBitmap),
                     contentDescription = item.primary,
                     contentScale = ContentScale.Fit,
+                    colorFilter = textTint,
                     modifier = GlanceModifier.fillMaxWidth().height(tempHeight),
                 )
                 if (secondaryBitmap != null) {
@@ -135,6 +137,7 @@ internal fun ForecastRow(
                         provider = ImageProvider(secondaryBitmap),
                         contentDescription = item.secondary,
                         contentScale = ContentScale.Fit,
+                        colorFilter = textTint,
                         modifier = GlanceModifier.fillMaxWidth().height(lowHeight),
                     )
                 }

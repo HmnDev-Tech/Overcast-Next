@@ -132,7 +132,7 @@ private fun WeatherWidgetContent(
     val resources = context.resources
     val density = resources.displayMetrics.density
     val textColor = widgetTextColor(mode)
-    val textArgb = widgetTextArgb(mode)
+    val textArgb = WIDGET_TEXT_ARGB
     
     val shadow = mode == WidgetBackground.NONE
     val padding = spacing
@@ -169,6 +169,7 @@ private fun WeatherWidgetContent(
                 provider = ImageProvider(bitmap),
                 contentDescription = temperature,
                 contentScale = ContentScale.Fit,
+                colorFilter = widgetTextTint(mode),
                 modifier = GlanceModifier.fillMaxWidth().defaultWeight(),
             )
             if (showSubtitle) {
@@ -188,6 +189,7 @@ private fun WeatherWidgetContent(
                     Image(
                         provider = ImageProvider(subtitleBitmap),
                         contentDescription = subtitle,
+                        colorFilter = widgetTextTint(mode),
                     )
                 }
             }
