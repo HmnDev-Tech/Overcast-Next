@@ -203,7 +203,7 @@ class SettingsRepository(
 
     fun isAiAdviceAvailable(): Boolean {
         val provider = AiProviders.byId(getAiProvider())
-        return !provider.isOff && getAiApiKey(provider.id) != null
+        return !provider.isOff && (!provider.requiresApiKey || getAiApiKey(provider.id) != null)
     }
 
     fun getAiApiKey(providerId: String): String? =

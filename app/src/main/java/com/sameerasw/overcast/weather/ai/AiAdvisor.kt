@@ -17,13 +17,14 @@ import org.json.JSONException
 import org.json.JSONObject
 
 class AiException(val reason: Reason, message: String? = null) : Exception(message) {
-    enum class Reason { NOT_CONFIGURED, INVALID_KEY, MODEL_NOT_FOUND, RATE_LIMITED, UNAVAILABLE, NETWORK, BAD_RESPONSE }
+    enum class Reason { NOT_CONFIGURED, UNSUPPORTED, DOWNLOAD_FAILED, INVALID_KEY, MODEL_NOT_FOUND, RATE_LIMITED, UNAVAILABLE, NETWORK, BAD_RESPONSE }
 }
 
 object AiAdvisor {
     private const val CACHE_PREFS = "ai_advice_cache"
     private const val KEY_SIGNATURE = "signature"
     private const val KEY_TEXT = "text"
+    private const val SYSTEM_PROMPT = "You are a concise weather assistant."
 
     private val _version = MutableStateFlow(0)
     val version: StateFlow<Int> = _version.asStateFlow()
@@ -60,14 +61,14 @@ object AiAdvisor {
         val settings = SettingsRepository(context)
         val provider = AiProviders.byId(settings.getAiProvider())
         val apiKey = settings.getAiApiKey(provider.id)
-        if (provider.isOff || apiKey == null) throw AiException(AiException.Reason.NOT_CONFIGURED)
+        if (provider.isOff || (provider.requiresApiKey && apiKey == null)) throw AiException(AiException.Reason.NOT_CONFIGURED)
         val model = settings.getAiModel(provider.id) ?: provider.defaultModel
         val prompt = buildPrompt(snapshot, units)
         val text = try {
-            if (provider.id == AiProviders.gemini.id) {
-                adviseGemini(apiKey, model, prompt)
-            } else {
-                adviseOpenAiCompatible(settings.getAiBaseUrl(provider.id) ?: provider.defaultBaseUrl.orEmpty(), apiKey, model, prompt)
+            when {
+                provider.isOnDevice -> OnDeviceAi.generate("$SYSTEM_PROMPT\n\n$prompt")
+                provider.id == AiProviders.gemini.id -> adviseGemini(apiKey.orEmpty(), model, prompt)
+                else -> adviseOpenAiCompatible(settings.getAiBaseUrl(provider.id) ?: provider.defaultBaseUrl.orEmpty(), apiKey.orEmpty(), model, prompt)
             }
         } catch (e: AiException) {
             _lastError.value = e
@@ -117,7 +118,7 @@ object AiAdvisor {
             .put("max_tokens", 300)
             .put("temperature", 0.6)
             .put("messages", JSONArray()
-                .put(JSONObject().put("role", "system").put("content", "You are a concise weather assistant."))
+                .put(JSONObject().put("role", "system").put("content", SYSTEM_PROMPT))
                 .put(JSONObject().put("role", "user").put("content", prompt)))
             .toString()
         val json = parse(post(url, body, mapOf("Authorization" to "Bearer $apiKey")))

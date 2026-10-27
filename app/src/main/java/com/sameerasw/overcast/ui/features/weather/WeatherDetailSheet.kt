@@ -285,6 +285,7 @@ fun WeatherScreen(onOpenSettings: () -> Unit = {}) {
     val palette = presentation.palette
     val effectSpec = presentation.effectSpec
     val effectHaptics = presentation.haptics
+    val advice = rememberAiAdvice(state.snapshot, units)
 
     val requestLocation = rememberLocationPermissionRequest { granted ->
         if (granted) scope.launch { WeatherRepository.refresh(context, force = true) }
@@ -564,11 +565,10 @@ fun WeatherScreen(onOpenSettings: () -> Unit = {}) {
                                             .verticalScroll(scrollState)
                                             .padding(top = with(density) { topPx.toDp() } + 28.dp)
                                             .navigationBarsPadding()
-                                            .padding(bottom = 40.dp),
+                                            .padding(bottom = if (advice != null) 96.dp else 40.dp),
                                         verticalArrangement = Arrangement.spacedBy(20.dp),
                                     ) {
                                         AlertsSection(snapshot.activeAlerts().sortedByDescending { it.severity.ordinal }, palette)
-                                        AiAdviceSection(state.snapshot ?: snapshot, units, palette, Modifier.padding(horizontal = SIDE_PADDING))
                                         HourlySection(snapshot, units.temperature, palette)
                                         snapshot.upcomingDays().takeIf { it.isNotEmpty() }
                                             ?.let { DailySection(it, units.temperature, palette, Modifier.padding(horizontal = SIDE_PADDING)) }
@@ -594,7 +594,7 @@ fun WeatherScreen(onOpenSettings: () -> Unit = {}) {
                                             .fillMaxSize()
                                             .verticalScroll(scrollState)
                                             .navigationBarsPadding()
-                                            .padding(bottom = 40.dp),
+                                            .padding(bottom = if (advice != null) 96.dp else 40.dp),
                                     ) {
                                         Row(Modifier.fillMaxWidth()) {
                                             Column(
@@ -604,7 +604,6 @@ fun WeatherScreen(onOpenSettings: () -> Unit = {}) {
                                                 verticalArrangement = Arrangement.spacedBy(20.dp),
                                             ) {
                                             AlertsSection(snapshot.activeAlerts().sortedByDescending { it.severity.ordinal }, palette)
-                                            AiAdviceSection(state.snapshot ?: snapshot, units, palette, Modifier.padding(horizontal = SIDE_PADDING))
                                             snapshot.upcomingDays().takeIf { it.isNotEmpty() }
                                                 ?.let { DailySection(it, units.temperature, palette, Modifier.padding(horizontal = SIDE_PADDING)) }
                                             SunSection(snapshot, palette, Modifier.padding(horizontal = SIDE_PADDING))
@@ -716,6 +715,7 @@ fun WeatherScreen(onOpenSettings: () -> Unit = {}) {
                         }
                     }
                 }
+            AiAdviceFab(advice, visible = snapshot != null && !immersive && !sheetOpen, palette = palette)
         }
         }
     }
