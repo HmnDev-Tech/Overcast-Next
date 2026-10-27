@@ -8,18 +8,25 @@ import com.sameerasw.overcast.weather.model.WeatherSnapshot
 import com.sameerasw.overcast.weather.provider.ProviderHttp
 import com.sameerasw.overcast.weather.provider.WeatherProviderException
 import java.util.Locale
+import kotlinx.coroutines.flow.MutableStateFlow
+import kotlinx.coroutines.flow.StateFlow
+import kotlinx.coroutines.flow.asStateFlow
+import kotlinx.coroutines.flow.update
 import org.json.JSONArray
 import org.json.JSONException
 import org.json.JSONObject
 
 class AiException(val reason: Reason, message: String? = null) : Exception(message) {
-    enum class Reason { NOT_CONFIGURED, INVALID_KEY, RATE_LIMITED, NETWORK, BAD_RESPONSE }
+    enum class Reason { NOT_CONFIGURED, INVALID_KEY, MODEL_NOT_FOUND, RATE_LIMITED, UNAVAILABLE, NETWORK, BAD_RESPONSE }
 }
 
 object AiAdvisor {
     private const val CACHE_PREFS = "ai_advice_cache"
     private const val KEY_SIGNATURE = "signature"
     private const val KEY_TEXT = "text"
+
+    private val _version = MutableStateFlow(0)
+    val version: StateFlow<Int> = _version.asStateFlow()
 
     fun buildPrompt(snapshot: WeatherSnapshot, units: WeatherUnits, locale: Locale = Locale.getDefault()): String {
         val lang = locale.getDisplayLanguage(Locale.ENGLISH).ifBlank { "English" }
@@ -60,6 +67,7 @@ object AiAdvisor {
         signature(settings, snapshot, units)?.let {
             cachePrefs(context).edit().putString(KEY_SIGNATURE, it).putString(KEY_TEXT, text).apply()
         }
+        _version.update { it + 1 }
         return text
     }
 
@@ -108,29 +116,31 @@ object AiAdvisor {
             ?.takeIf { it.isNotBlank() } ?: throw AiException(AiException.Reason.BAD_RESPONSE)
     }
 
-    private fun parse(raw: String): JSONObject {
-        val json = try {
-            JSONObject(raw)
-        } catch (e: JSONException) {
-            throw AiException(AiException.Reason.BAD_RESPONSE, e.message)
-        }
-        json.optJSONObject("error")?.let { throw AiException(AiException.Reason.BAD_RESPONSE, it.optString("message").ifBlank { null }) }
-        return json
+    private fun parse(raw: String): JSONObject = try {
+        JSONObject(raw)
+    } catch (e: JSONException) {
+        throw AiException(AiException.Reason.BAD_RESPONSE, e.message)
     }
 
     private suspend fun post(url: String, body: String, headers: Map<String, String>): String {
-        try {
-            return ProviderHttp.post(url, body, headers)
+        val response = try {
+            ProviderHttp.postForResponse(url, body, headers)
         } catch (e: WeatherProviderException) {
-            throw AiException(
-                when (e.reason) {
-                    WeatherProviderException.Reason.INVALID_KEY -> AiException.Reason.INVALID_KEY
-                    WeatherProviderException.Reason.RATE_LIMITED -> AiException.Reason.RATE_LIMITED
-                    WeatherProviderException.Reason.NETWORK -> AiException.Reason.NETWORK
-                    WeatherProviderException.Reason.BAD_RESPONSE -> AiException.Reason.BAD_RESPONSE
-                },
-                e.message,
-            )
+            throw AiException(AiException.Reason.NETWORK, e.message)
+        } catch (e: ClassCastException) {
+            throw AiException(AiException.Reason.BAD_RESPONSE, e.message)
         }
+        if (response.code in 200..299) return response.body
+        val error = runCatching { JSONObject(response.body).optJSONObject("error") }.getOrNull()
+        val message = error?.optString("message")?.ifBlank { null } ?: "HTTP ${response.code}"
+        val keyRejected = response.body.contains("API_KEY_INVALID") || response.body.contains("invalid_api_key")
+        val reason = when {
+            response.code == 401 || response.code == 403 || keyRejected -> AiException.Reason.INVALID_KEY
+            response.code == 404 -> AiException.Reason.MODEL_NOT_FOUND
+            response.code == 429 -> AiException.Reason.RATE_LIMITED
+            response.code >= 500 -> AiException.Reason.UNAVAILABLE
+            else -> AiException.Reason.BAD_RESPONSE
+        }
+        throw AiException(reason, message)
     }
 }

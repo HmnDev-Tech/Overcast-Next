@@ -11,21 +11,27 @@ import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.padding
+import androidx.compose.foundation.layout.size
+import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.text.KeyboardOptions
 import androidx.compose.material3.Button
 import androidx.compose.material3.ExperimentalMaterial3Api
+import androidx.compose.material3.FilledTonalIconButton
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
+import androidx.compose.material3.LoadingIndicator
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.OutlinedTextField
 import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
+import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
@@ -45,8 +51,14 @@ import com.sameerasw.overcast.ui.core.cards.ConfigPickerItem
 import com.sameerasw.overcast.ui.core.cards.IconToggleItem
 import com.sameerasw.overcast.ui.core.containers.RoundedCardContainer
 import com.sameerasw.overcast.utils.HapticUtil
+import com.sameerasw.overcast.weather.WeatherRepository
+import com.sameerasw.overcast.weather.WeatherUnits
+import com.sameerasw.overcast.weather.ai.AiAdvisor
+import com.sameerasw.overcast.weather.ai.AiException
 import com.sameerasw.overcast.weather.ai.AiProvider
 import com.sameerasw.overcast.weather.ai.AiProviders
+import kotlinx.coroutines.CancellationException
+import kotlinx.coroutines.launch
 
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
@@ -108,6 +120,11 @@ private fun AiProviderConfig(provider: AiProvider, settings: SettingsRepository)
     var baseUrlInput by remember(provider.id) { mutableStateOf(savedBaseUrl) }
     var keyVisible by remember { mutableStateOf(false) }
     var advancedExpanded by remember { mutableStateOf(false) }
+    val scope = rememberCoroutineScope()
+    val weatherState by WeatherRepository.state.collectAsState()
+    var testing by remember { mutableStateOf(false) }
+    var testError by remember(provider.id) { mutableStateOf<AiException?>(null) }
+    var testDone by remember(provider.id) { mutableStateOf(false) }
     val changed = keyInput != savedKey || modelInput != savedModel || (provider.needsBaseUrl && baseUrlInput != savedBaseUrl)
 
     Column(verticalArrangement = Arrangement.spacedBy(2.dp)) {
@@ -220,6 +237,37 @@ private fun AiProviderConfig(provider: AiProvider, settings: SettingsRepository)
                     }
                 }
                 Spacer(Modifier.weight(1f))
+                FilledTonalIconButton(
+                    onClick = {
+                        HapticUtil.performVirtualKeyHaptic(view)
+                        val snapshot = weatherState.snapshot ?: return@FilledTonalIconButton
+                        testing = true
+                        testError = null
+                        testDone = false
+                        scope.launch {
+                            try {
+                                AiAdvisor.advise(context, snapshot, WeatherUnits.from(settings), force = true)
+                                testDone = true
+                            } catch (e: AiException) {
+                                testError = e
+                            } catch (e: CancellationException) {
+                                throw e
+                            } catch (e: Exception) {
+                                testError = AiException(AiException.Reason.BAD_RESPONSE, e.message)
+                            } finally {
+                                testing = false
+                            }
+                        }
+                    },
+                    enabled = !testing && !changed && savedKey.isNotEmpty() && weatherState.snapshot != null,
+                ) {
+                    if (testing) {
+                        LoadingIndicator(Modifier.size(24.dp))
+                    } else {
+                        Icon(painterResource(R.drawable.rounded_refresh_24), contentDescription = stringResource(R.string.weather_refresh))
+                    }
+                }
+                Spacer(Modifier.width(8.dp))
                 Button(
                     onClick = {
                         HapticUtil.performVirtualKeyHaptic(view)
@@ -233,6 +281,36 @@ private fun AiProviderConfig(provider: AiProvider, settings: SettingsRepository)
                     enabled = changed,
                 ) {
                     Text(stringResource(R.string.action_save))
+                }
+            }
+        }
+        AnimatedVisibility(
+            visible = testError != null || testDone,
+            enter = expandVertically() + fadeIn(),
+            exit = shrinkVertically() + fadeOut(),
+        ) {
+            val error = testError
+            Surface(
+                color = if (error != null) MaterialTheme.colorScheme.errorContainer else MaterialTheme.colorScheme.secondaryContainer,
+                shape = MaterialTheme.shapes.extraSmall,
+                modifier = Modifier.fillMaxWidth(),
+            ) {
+                Row(
+                    modifier = Modifier.padding(16.dp),
+                    verticalAlignment = Alignment.CenterVertically,
+                    horizontalArrangement = Arrangement.spacedBy(12.dp),
+                ) {
+                    val contentColor = if (error != null) MaterialTheme.colorScheme.onErrorContainer else MaterialTheme.colorScheme.onSecondaryContainer
+                    Icon(
+                        painterResource(if (error != null) R.drawable.rounded_warning_24 else R.drawable.rounded_check_24),
+                        contentDescription = null,
+                        tint = contentColor,
+                    )
+                    Text(
+                        text = if (error != null) aiErrorText(error) else stringResource(R.string.ai_advice_ready),
+                        style = MaterialTheme.typography.bodyMedium,
+                        color = contentColor,
+                    )
                 }
             }
         }
