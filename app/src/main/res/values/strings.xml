@@ -177,7 +177,6 @@
     <string name="weather_attribution_yandex">The data is provided by the Yandex Weather service.</string>
     <string name="aqi_title">Air quality</string>
     <string name="aqi_provider_title">Air quality provider</string>
-    <string name="aqi_source">US AQI · Open-Meteo Air Quality</string>
     <string name="aqi_good">Good</string>
     <string name="aqi_moderate">Moderate</string>
     <string name="aqi_sensitive">Unhealthy for sensitive groups</string>

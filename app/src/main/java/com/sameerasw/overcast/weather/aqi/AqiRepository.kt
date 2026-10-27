@@ -50,10 +50,20 @@ object AqiProviders {
 }
 
 object AqiRepository {
-    suspend fun current(context: Context): AqiData {
+    private const val MAX_AGE_MS = 30 * 60_000L
+
+    private class Cached(val key: String, val at: Long, val data: AqiData)
+
+    @Volatile private var last: Cached? = null
+
+    fun cached(): AqiData? = last?.data
+
+    suspend fun current(context: Context, force: Boolean = false): AqiData {
         val loc = WeatherRepository.lastKnownLocation(context) ?: throw AqiException("No location for AQI")
         val lat = "%.2f".format(Locale.US, loc.latitude)
         val lon = "%.2f".format(Locale.US, loc.longitude)
+        val key = "$lat,$lon"
+        last?.takeIf { !force && it.key == key && System.currentTimeMillis() - it.at < MAX_AGE_MS }?.let { return it.data }
         val url = "https://air-quality-api.open-meteo.com/v1/air-quality" +
             "?latitude=$lat&longitude=$lon&current=us_aqi,pm2_5,pm10,ozone,nitrogen_dioxide&timezone=auto"
         val raw = try {
@@ -66,13 +76,15 @@ object AqiRepository {
         } catch (e: JSONException) {
             null
         } ?: throw AqiException("Bad AQI response")
-        return AqiData(
+        val data = AqiData(
             aqi = current.optInt("us_aqi", -1).takeIf { it >= 0 },
             pm25 = current.optDouble("pm2_5").takeIf { !it.isNaN() },
             pm10 = current.optDouble("pm10").takeIf { !it.isNaN() },
             ozone = current.optDouble("ozone").takeIf { !it.isNaN() },
             no2 = current.optDouble("nitrogen_dioxide").takeIf { !it.isNaN() },
         )
+        last = Cached(key, System.currentTimeMillis(), data)
+        return data
     }
 }
 
