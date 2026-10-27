@@ -9,7 +9,6 @@ import android.graphics.Paint
 import android.graphics.Path
 import android.graphics.RectF
 import android.graphics.Shader
-import android.graphics.Typeface
 import androidx.compose.ui.graphics.toArgb
 import androidx.core.content.ContextCompat
 import androidx.core.graphics.ColorUtils
@@ -19,6 +18,7 @@ import com.sameerasw.overcast.weather.WeatherFormat
 import com.sameerasw.overcast.weather.WeatherIconStyle
 import com.sameerasw.overcast.weather.WeatherUnits
 import com.sameerasw.overcast.weather.model.WeatherSnapshot
+import com.sameerasw.overcast.weather.widget.WidgetTemperatureRenderer
 import java.text.DateFormat
 import java.util.Date
 
@@ -47,11 +47,12 @@ object DayPreviewRenderer {
         canvas.drawRoundRect(RectF(0f, 0f, WIDTH.toFloat(), HEIGHT.toFloat()), radius, radius, background)
 
         val text = Paint(Paint.ANTI_ALIAS_FLAG).apply { color = Color.WHITE }
-        val bold = Typeface.create(Typeface.DEFAULT, Typeface.BOLD)
+        val regular = WidgetTemperatureRenderer.typeface(context, 100, 400)
+        val bold = WidgetTemperatureRenderer.typeface(context, 100, 700)
         text.typeface = bold
         text.textSize = 44f
         canvas.drawText(snapshot.locationName, 56f, 84f, text)
-        text.typeface = Typeface.DEFAULT
+        text.typeface = regular
         text.textSize = 34f
         text.color = ColorUtils.setAlphaComponent(Color.WHITE, 200)
         val range = "${WeatherFormat.temperature(snapshot.todayHighC(now), units.temperature)} / ${WeatherFormat.temperature(snapshot.todayLowC(now), units.temperature)} · ${snapshot.conditionText}"
@@ -110,7 +111,7 @@ object DayPreviewRenderer {
                 icon.setBounds((cx - 26).toInt(), ICON_TOP, (cx + 26).toInt(), ICON_TOP + 52)
                 icon.draw(canvas)
             }
-            text.typeface = Typeface.DEFAULT
+            text.typeface = regular
             text.textSize = 28f
             text.color = ColorUtils.setAlphaComponent(Color.WHITE, 190)
             canvas.drawText(hourFormat.format(Date(hour.timeMillis)), cx, HEIGHT - 26f, text)

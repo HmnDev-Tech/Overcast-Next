@@ -21,10 +21,13 @@ import androidx.compose.runtime.getValue
 import androidx.compose.runtime.remember
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
-import androidx.compose.ui.geometry.CornerRadius
 import androidx.compose.ui.geometry.Offset
-import androidx.compose.ui.geometry.Size
 import androidx.compose.ui.graphics.compositeOver
+import androidx.compose.ui.graphics.drawscope.Stroke
+import androidx.compose.ui.graphics.StrokeJoin
+import androidx.compose.ui.graphics.StrokeCap
+import androidx.compose.ui.graphics.Path
+import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.res.painterResource
 import androidx.compose.ui.res.stringResource
@@ -47,8 +50,8 @@ import com.sameerasw.overcast.weather.model.DailyForecast
 import com.sameerasw.overcast.weather.model.HourlyForecast
 import com.sameerasw.overcast.weather.model.MinutelyPrecipitation
 import com.sameerasw.overcast.weather.model.WeatherSnapshot
-import kotlin.math.max
 import kotlin.math.roundToInt
+import kotlin.math.sqrt
 
 
 enum class StormRisk { LOW, MODERATE, HIGH, VERY_HIGH }
@@ -94,30 +97,37 @@ fun NowcastBanner(snapshot: WeatherSnapshot, palette: WeatherPalette, modifier: 
                 Icon(painterResource(R.drawable.rounded_rainy_24), contentDescription = null, tint = palette.accent, modifier = Modifier.size(24.dp))
                 Text(message, color = palette.onBase, style = MaterialTheme.typography.titleMedium)
             }
-            Canvas(Modifier.fillMaxWidth().height(40.dp)) {
-                val slotWidth = size.width / slots.size
-                val barWidth = (slotWidth * 0.5f).coerceAtMost(14.dp.toPx())
-                val dot = 4.dp.toPx()
-                slots.forEachIndexed { index, slot ->
-                    val centerX = slotWidth * (index + 0.5f)
-                    val level = when {
-                        slot.mm < RAIN_THRESHOLD_MM -> 0f
-                        slot.mm < 0.5 -> 0.4f
-                        slot.mm < 2.0 -> 0.7f
-                        else -> 1f
-                    }
-                    if (level == 0f) {
-                        drawCircle(palette.onBaseMuted.copy(alpha = 0.35f), radius = dot / 2, center = Offset(centerX, size.height - dot / 2))
-                    } else {
-                        val barHeight = size.height * level
-                        drawRoundRect(
-                            color = palette.accent,
-                            topLeft = Offset(centerX - barWidth / 2, size.height - barHeight),
-                            size = Size(barWidth, barHeight),
-                            cornerRadius = CornerRadius(barWidth / 2, barWidth / 2),
-                        )
+            Canvas(Modifier.fillMaxWidth().height(56.dp)) {
+                val stroke = 3.dp.toPx()
+                val top = stroke
+                val bottom = size.height - stroke / 2
+                // Square-root scale so light drizzle still reads; about 4 mm per 15 minutes fills the chart.
+                fun level(mm: Double) = if (mm < RAIN_THRESHOLD_MM) 0f else sqrt((mm / 4.0).coerceAtMost(1.0)).toFloat().coerceAtLeast(0.12f)
+                val points = slots.mapIndexed { index, slot ->
+                    Offset(
+                        if (slots.size == 1) 0f else size.width * index / (slots.size - 1),
+                        bottom - (bottom - top) * level(slot.mm),
+                    )
+                }
+                val line = Path().apply {
+                    moveTo(points.first().x, points.first().y)
+                    for (index in 1 until points.size) {
+                        val previous = points[index - 1]
+                        val point = points[index]
+                        val midX = (previous.x + point.x) / 2
+                        cubicTo(midX, previous.y, midX, point.y, point.x, point.y)
                     }
                 }
+                val area = Path().apply {
+                    addPath(line)
+                    lineTo(points.last().x, size.height)
+                    lineTo(points.first().x, size.height)
+                    close()
+                }
+                drawLine(palette.onBaseMuted.copy(alpha = 0.25f), Offset(0f, bottom), Offset(size.width, bottom), strokeWidth = 1.dp.toPx())
+                drawPath(area, Brush.verticalGradient(listOf(palette.accent.copy(alpha = 0.45f), palette.accent.copy(alpha = 0f))))
+                drawPath(line, palette.accent, style = Stroke(width = stroke, cap = StrokeCap.Round, join = StrokeJoin.Round))
+                drawCircle(palette.accent, radius = 4.5.dp.toPx(), center = points.first())
             }
             Row(Modifier.fillMaxWidth()) {
                 listOf(R.string.nowcast_now, R.string.nowcast_hour, R.string.nowcast_two_hours).forEachIndexed { index, label ->
