@@ -68,6 +68,7 @@ import com.sameerasw.overcast.weather.WeatherIconStyle
 import com.sameerasw.overcast.weather.WeatherRepository
 import com.sameerasw.overcast.weather.WeatherUnits
 import com.sameerasw.overcast.weather.WindSpeedUnit
+import com.sameerasw.overcast.weather.aqi.AqiProviders
 import com.sameerasw.overcast.weather.model.WeatherError
 import com.sameerasw.overcast.weather.provider.OpenMeteoModels
 import com.sameerasw.overcast.weather.provider.WeatherProviders
@@ -229,6 +230,24 @@ fun WeatherSettingsUI(
                                 }
                             }
                         }
+                    }
+                }
+                var aqiProviderId by remember { mutableStateOf(AqiProviders.resolve(settings.getAqiProvider())) }
+                val offLabel = stringResource(R.string.widget_forecast_off)
+                ConfigPickerItem(
+                    title = stringResource(R.string.aqi_provider_title),
+                    selectedValue = AqiProviders.all.first { it.first == aqiProviderId }.second ?: offLabel,
+                    iconRes = R.drawable.rounded_air_24,
+                    modifier = Modifier.fillMaxWidth(),
+                ) {
+                    AqiProviders.all.forEach { (id, name) ->
+                        SegmentedDropdownMenuItem(
+                            text = { Text(name ?: offLabel) },
+                            onClick = {
+                                aqiProviderId = id
+                                settings.setAqiProvider(id)
+                            },
+                        )
                     }
                 }
                 ConfigPickerItem(
@@ -452,7 +471,7 @@ private fun CompatibilityInfoSheet(onDismiss: () -> Unit) {
 }
 
 @Composable
-private fun SectionTitle(res: Int) {
+internal fun SectionTitle(res: Int) {
     Text(
         text = stringResource(res),
         style = MaterialTheme.typography.titleSmall,
@@ -484,12 +503,12 @@ private fun errorText(context: Context, error: WeatherError): String {
     return if (detail != null) "$base: $detail" else base
 }
 
-private fun clipboardText(context: Context): String? {
+internal fun clipboardText(context: Context): String? {
     val clipboard = context.getSystemService(Context.CLIPBOARD_SERVICE) as? ClipboardManager ?: return null
     return clipboard.primaryClip?.takeIf { it.itemCount > 0 }?.getItemAt(0)?.coerceToText(context)?.toString()
 }
 
-private fun openUrl(context: Context, url: String) {
+internal fun openUrl(context: Context, url: String) {
     try {
         context.startActivity(Intent(Intent.ACTION_VIEW, Uri.parse(url)).addFlags(Intent.FLAG_ACTIVITY_NEW_TASK))
     } catch (_: Exception) {

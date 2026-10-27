@@ -568,10 +568,12 @@ fun WeatherScreen(onOpenSettings: () -> Unit = {}) {
                                         verticalArrangement = Arrangement.spacedBy(20.dp),
                                     ) {
                                         AlertsSection(snapshot.activeAlerts().sortedByDescending { it.severity.ordinal }, palette)
+                                        AiAdviceSection(state.snapshot ?: snapshot, units, palette, Modifier.padding(horizontal = SIDE_PADDING))
                                         HourlySection(snapshot, units.temperature, palette)
                                         snapshot.upcomingDays().takeIf { it.isNotEmpty() }
                                             ?.let { DailySection(it, units.temperature, palette, Modifier.padding(horizontal = SIDE_PADDING)) }
                                         DetailsSection(snapshot, units, palette, Modifier.padding(horizontal = SIDE_PADDING))
+                                        AqiSection(state.snapshot ?: snapshot, palette, Modifier.padding(horizontal = SIDE_PADDING))
                                         SunSection(snapshot, palette, Modifier.padding(horizontal = SIDE_PADDING))
                                         Footer(
                                             modifier = Modifier.padding(horizontal = SIDE_PADDING).rainSurface("footer"),
@@ -602,6 +604,7 @@ fun WeatherScreen(onOpenSettings: () -> Unit = {}) {
                                                 verticalArrangement = Arrangement.spacedBy(20.dp),
                                             ) {
                                             AlertsSection(snapshot.activeAlerts().sortedByDescending { it.severity.ordinal }, palette)
+                                            AiAdviceSection(state.snapshot ?: snapshot, units, palette, Modifier.padding(horizontal = SIDE_PADDING))
                                             snapshot.upcomingDays().takeIf { it.isNotEmpty() }
                                                 ?.let { DailySection(it, units.temperature, palette, Modifier.padding(horizontal = SIDE_PADDING)) }
                                             SunSection(snapshot, palette, Modifier.padding(horizontal = SIDE_PADDING))
@@ -616,6 +619,7 @@ fun WeatherScreen(onOpenSettings: () -> Unit = {}) {
                                             ) {
                                             HourlySection(snapshot, units.temperature, palette)
                                             DetailsSection(snapshot, units, palette, Modifier.padding(horizontal = SIDE_PADDING))
+                                            AqiSection(state.snapshot ?: snapshot, palette, Modifier.padding(horizontal = SIDE_PADDING))
                                             Footer(
                                                 modifier = Modifier.padding(horizontal = SIDE_PADDING).rainSurface("footer"),
                                                 snapshot = snapshot,
