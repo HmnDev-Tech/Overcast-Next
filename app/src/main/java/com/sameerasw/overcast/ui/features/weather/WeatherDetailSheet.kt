@@ -1,5 +1,6 @@
 package com.sameerasw.overcast.ui.features.weather
 
+import androidx.compose.runtime.mutableStateMapOf
 import android.content.Context
 import com.sameerasw.overcast.weather.effects.WeatherEffectHaptics
 import androidx.compose.runtime.mutableIntStateOf
@@ -173,6 +174,7 @@ import kotlinx.coroutines.launch
 import java.text.SimpleDateFormat
 import java.util.Date
 import java.util.Locale
+import kotlin.math.abs
 import kotlin.math.roundToInt
 import android.content.SharedPreferences
 import androidx.compose.foundation.Canvas
@@ -289,6 +291,10 @@ fun WeatherScreen(onOpenSettings: () -> Unit = {}) {
     val effectHaptics = presentation.haptics
     val advice = rememberAiAdvice(state.snapshot, units)
     val visibleSections = rememberVisibleSections()
+    val sectionHeights = remember { mutableStateMapOf<MainSection, Int>() }
+    val leftFixedBottom = remember { mutableIntStateOf(0) }
+    val rightFixedBottom = remember { mutableIntStateOf(0) }
+    val footerHeight = remember { mutableIntStateOf(0) }
 
     val requestLocation = rememberLocationPermissionRequest { granted ->
         if (granted) scope.launch { WeatherRepository.refresh(context, force = true) }
@@ -599,18 +605,59 @@ fun WeatherScreen(onOpenSettings: () -> Unit = {}) {
                                             .navigationBarsPadding()
                                             .padding(bottom = if (advice != null) 96.dp else 40.dp),
                                     ) {
+                                        val gapPx = with(density) { 20.dp.roundToPx() }
+                                        val slackPx = with(density) { 48.dp.roundToPx() }
+                                        val placedLeft = remember { HashMap<MainSection, Boolean>() }
+                                        val floatingSections = BALANCED_SECTIONS.filter { it in visibleSections }
+                                        var left = leftFixedBottom.intValue
+                                        var right = rightFixedBottom.intValue + footerHeight.intValue + gapPx
+                                        val leftSections = mutableListOf<MainSection>()
+                                        val rightSections = mutableListOf<MainSection>()
+                                        // Greedy fill of the shorter column; the slack keeps a card where it is when the columns are nearly level.
+                                        floatingSections.forEach { section ->
+                                            val height = sectionHeights[section] ?: 0
+                                            val previous = placedLeft[section]
+                                            val goLeft = if (previous != null && abs(left - right) < slackPx) previous else left <= right
+                                            placedLeft[section] = goLeft
+                                            if (goLeft) {
+                                                leftSections += section
+                                                left += height
+                                            } else {
+                                                rightSections += section
+                                                right += height
+                                            }
+                                        }
+                                        val balancedSection: @Composable (MainSection) -> Unit = { section ->
+                                            Box(Modifier.onSizeChanged { sectionHeights[section] = it.height }) {
+                                                val sectionModifier = Modifier.padding(top = 20.dp).padding(horizontal = SIDE_PADDING)
+                                                val live = state.snapshot ?: snapshot
+                                                when (section) {
+                                                    MainSection.SUN -> SunSection(snapshot, palette, sectionModifier)
+                                                    MainSection.INSIGHTS -> InsightsSection(live, units, palette, sectionModifier)
+                                                    MainSection.RADAR -> RadarSection(live, palette, sectionModifier)
+                                                    MainSection.AIR_QUALITY -> AqiSection(live, palette, sectionModifier)
+                                                    MainSection.MARINE -> MarineSection(live, units, palette, sectionModifier)
+                                                    MainSection.RIVER -> RiverSection(live, palette, sectionModifier)
+                                                    MainSection.DETAILS -> Unit
+                                                }
+                                            }
+                                        }
                                         Row(Modifier.fillMaxWidth()) {
                                             Column(
                                                 Modifier
                                                     .weight(leftFraction)
                                                     .padding(top = with(density) { topPx.toDp() } + 28.dp),
-                                                verticalArrangement = Arrangement.spacedBy(20.dp),
                                             ) {
-                                            AlertsSection(snapshot.activeAlerts().sortedByDescending { it.severity.ordinal }, palette)
-                                            NowcastBanner(snapshot, palette, Modifier.padding(horizontal = SIDE_PADDING))
-                                            snapshot.upcomingDays().takeIf { it.isNotEmpty() }
-                                                ?.let { DailySection(it, units, palette, Modifier.padding(horizontal = SIDE_PADDING)) }
-                                            if (MainSection.SUN in visibleSections) SunSection(snapshot, palette, Modifier.padding(horizontal = SIDE_PADDING))
+                                                Column(
+                                                    Modifier.onGloballyPositioned { leftFixedBottom.intValue = (it.positionInRoot().y + it.size.height).roundToInt() },
+                                                    verticalArrangement = Arrangement.spacedBy(20.dp),
+                                                ) {
+                                                    AlertsSection(snapshot.activeAlerts().sortedByDescending { it.severity.ordinal }, palette)
+                                                    NowcastBanner(snapshot, palette, Modifier.padding(horizontal = SIDE_PADDING))
+                                                    snapshot.upcomingDays().takeIf { it.isNotEmpty() }
+                                                        ?.let { DailySection(it, units, palette, Modifier.padding(horizontal = SIDE_PADDING)) }
+                                                }
+                                                leftSections.forEach { section -> key(section) { balancedSection(section) } }
                                             }
                                             if (hingeFraction > 0f) Spacer(Modifier.weight(hingeFraction))
                                             Column(
@@ -618,27 +665,31 @@ fun WeatherScreen(onOpenSettings: () -> Unit = {}) {
                                                     .weight((1f - leftFraction - hingeFraction).coerceAtLeast(0.05f))
                                                     .statusBarsPadding()
                                                     .padding(top = 28.dp),
-                                                verticalArrangement = Arrangement.spacedBy(20.dp),
                                             ) {
-                                            HourlySection(snapshot, units.temperature, palette, units = units)
-                                            if (MainSection.DETAILS in visibleSections) DetailsSection(snapshot, units, palette, Modifier.padding(horizontal = SIDE_PADDING))
-                                            if (MainSection.INSIGHTS in visibleSections) InsightsSection(state.snapshot ?: snapshot, units, palette, Modifier.padding(horizontal = SIDE_PADDING))
-                                            if (MainSection.RADAR in visibleSections) RadarSection(state.snapshot ?: snapshot, palette, Modifier.padding(horizontal = SIDE_PADDING))
-                                            if (MainSection.AIR_QUALITY in visibleSections) AqiSection(state.snapshot ?: snapshot, palette, Modifier.padding(horizontal = SIDE_PADDING))
-                                            if (MainSection.MARINE in visibleSections) MarineSection(state.snapshot ?: snapshot, units, palette, Modifier.padding(horizontal = SIDE_PADDING))
-                                            if (MainSection.RIVER in visibleSections) RiverSection(state.snapshot ?: snapshot, palette, Modifier.padding(horizontal = SIDE_PADDING))
-                                            Footer(
-                                                modifier = Modifier.padding(horizontal = SIDE_PADDING).rainSurface("footer"),
-                                                snapshot = snapshot,
-                                                error = state.error,
-                                                palette = palette,
-                                                refreshing = state.loading,
-                                                onRefresh = {
-                                                    HapticUtil.performVirtualKeyHaptic(view)
-                                                    scope.launch { WeatherRepository.refresh(context, force = true) }
-                                                },
-                                                onOpenSettings = onOpenSettings,
-                                            )
+                                                Column(
+                                                    Modifier.onGloballyPositioned { rightFixedBottom.intValue = (it.positionInRoot().y + it.size.height).roundToInt() },
+                                                    verticalArrangement = Arrangement.spacedBy(20.dp),
+                                                ) {
+                                                    HourlySection(snapshot, units.temperature, palette, units = units)
+                                                    if (MainSection.DETAILS in visibleSections) DetailsSection(snapshot, units, palette, Modifier.padding(horizontal = SIDE_PADDING))
+                                                }
+                                                rightSections.forEach { section -> key(section) { balancedSection(section) } }
+                                                Footer(
+                                                    modifier = Modifier
+                                                        .padding(top = 20.dp)
+                                                        .onSizeChanged { footerHeight.intValue = it.height }
+                                                        .padding(horizontal = SIDE_PADDING)
+                                                        .rainSurface("footer"),
+                                                    snapshot = snapshot,
+                                                    error = state.error,
+                                                    palette = palette,
+                                                    refreshing = state.loading,
+                                                    onRefresh = {
+                                                        HapticUtil.performVirtualKeyHaptic(view)
+                                                        scope.launch { WeatherRepository.refresh(context, force = true) }
+                                                    },
+                                                    onOpenSettings = onOpenSettings,
+                                                )
                                             }
                                         }
                                     }
@@ -812,6 +863,14 @@ internal fun Modifier.rainSurface(key: String, corner: Dp = 28.dp, mask: (() -> 
 }
 
 internal val SIDE_PADDING = 20.dp
+private val BALANCED_SECTIONS = listOf(
+    MainSection.SUN,
+    MainSection.INSIGHTS,
+    MainSection.RADAR,
+    MainSection.AIR_QUALITY,
+    MainSection.MARINE,
+    MainSection.RIVER,
+)
 private const val CONTENT_FADE_MS = 500
 private const val EFFECTS_DELAY_MS = 450L
 private const val EFFECTS_FADE_MS = 1800
