@@ -27,6 +27,7 @@ import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
@@ -56,6 +57,7 @@ import com.sameerasw.overcast.weather.WeatherUnits
 import com.sameerasw.overcast.weather.ai.AiAdvisor
 import com.sameerasw.overcast.weather.ai.AiProvider
 import com.sameerasw.overcast.weather.ai.AiProviders
+import com.sameerasw.overcast.weather.ai.OnDeviceAi
 import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.launch
 
@@ -68,6 +70,14 @@ fun AiSettingsUI(modifier: Modifier = Modifier) {
     val provider = AiProviders.byId(providerId)
     var shownProviderId by remember { mutableStateOf(providerId.takeIf { !provider.isOff } ?: AiProviders.gemini.id) }
     val offLabel = stringResource(R.string.widget_forecast_off)
+    val onDeviceLabel = stringResource(R.string.ai_provider_on_device)
+    var onDeviceSupported by remember { mutableStateOf(OnDeviceAi.isSupportedCached() ?: false) }
+    LaunchedEffect(Unit) { onDeviceSupported = OnDeviceAi.isSupported() }
+    fun label(option: AiProvider) = when {
+        option.isOff -> offLabel
+        option.isOnDevice -> onDeviceLabel
+        else -> option.displayName
+    }
 
     Column(
         modifier = modifier
@@ -79,13 +89,13 @@ fun AiSettingsUI(modifier: Modifier = Modifier) {
         RoundedCardContainer(spacing = 2.dp, cornerRadius = 24.dp) {
             ConfigPickerItem(
                 title = stringResource(R.string.ai_provider_title),
-                selectedValue = if (provider.isOff) offLabel else provider.displayName,
+                selectedValue = label(provider),
                 iconRes = R.drawable.rounded_model_training_24,
                 modifier = Modifier.fillMaxWidth(),
             ) {
-                AiProviders.all.forEach { option ->
+                AiProviders.all.filter { !it.isOnDevice || onDeviceSupported || it.id == providerId }.forEach { option ->
                     SegmentedDropdownMenuItem(
-                        text = { Text(if (option.isOff) offLabel else option.displayName) },
+                        text = { Text(label(option)) },
                         onClick = {
                             if (option.id != providerId) {
                                 settings.setAiProvider(option.id)
@@ -126,93 +136,95 @@ private fun AiProviderConfig(provider: AiProvider, settings: SettingsRepository)
     val changed = keyInput != savedKey || modelInput != savedModel || (provider.needsBaseUrl && baseUrlInput != savedBaseUrl)
 
     Column(verticalArrangement = Arrangement.spacedBy(2.dp)) {
-        Surface(
-            color = MaterialTheme.colorScheme.surfaceBright,
-            shape = MaterialTheme.shapes.extraSmall,
-            modifier = Modifier.fillMaxWidth(),
-        ) {
-            OutlinedTextField(
-                value = keyInput,
-                onValueChange = { keyInput = it.trim() },
-                modifier = Modifier
-                    .fillMaxWidth()
-                    .padding(16.dp),
-                singleLine = true,
-                label = { Text(stringResource(R.string.weather_api_key_title)) },
-                leadingIcon = { Icon(painterResource(R.drawable.rounded_key_24), contentDescription = null) },
-                trailingIcon = {
-                    Row {
-                        IconButton(onClick = {
-                            HapticUtil.performVirtualKeyHaptic(view)
-                            clipboardText(context)?.let { keyInput = it.trim() }
-                        }) {
-                            Icon(painterResource(R.drawable.rounded_content_paste_24), contentDescription = stringResource(R.string.shorten_paste_button))
-                        }
-                        IconButton(onClick = {
-                            HapticUtil.performVirtualKeyHaptic(view)
-                            keyVisible = !keyVisible
-                        }) {
-                            Icon(
-                                painterResource(if (keyVisible) R.drawable.rounded_visibility_off_24 else R.drawable.rounded_visibility_24),
-                                contentDescription = null,
-                            )
-                        }
-                    }
-                },
-                visualTransformation = if (keyVisible) VisualTransformation.None else PasswordVisualTransformation(),
-                keyboardOptions = KeyboardOptions(
-                    keyboardType = KeyboardType.Password,
-                    autoCorrectEnabled = false,
-                    imeAction = ImeAction.Done,
-                ),
-                shape = RoundedCornerShape(16.dp),
-            )
-        }
-        IconToggleItem(
-            iconRes = R.drawable.rounded_tune_24,
-            title = stringResource(R.string.ai_advanced_title),
-            showToggle = false,
-            onClick = { advancedExpanded = !advancedExpanded },
-            trailingContent = {
-                Icon(
-                    painter = painterResource(if (advancedExpanded) R.drawable.rounded_keyboard_arrow_up_24 else R.drawable.rounded_keyboard_arrow_down_24),
-                    contentDescription = null,
-                    tint = MaterialTheme.colorScheme.onSurfaceVariant,
-                )
-            },
-        )
-        AnimatedVisibility(
-            visible = advancedExpanded,
-            enter = expandVertically() + fadeIn(),
-            exit = shrinkVertically() + fadeOut(),
-        ) {
+        if (provider.requiresApiKey) {
             Surface(
                 color = MaterialTheme.colorScheme.surfaceBright,
                 shape = MaterialTheme.shapes.extraSmall,
                 modifier = Modifier.fillMaxWidth(),
             ) {
-                Column(Modifier.padding(16.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
-                    OutlinedTextField(
-                        value = modelInput,
-                        onValueChange = { modelInput = it.trim() },
-                        modifier = Modifier.fillMaxWidth(),
-                        singleLine = true,
-                        label = { Text(stringResource(R.string.ai_model_title)) },
-                        placeholder = { Text(provider.defaultModel) },
-                        keyboardOptions = KeyboardOptions(autoCorrectEnabled = false, imeAction = ImeAction.Done),
-                        shape = RoundedCornerShape(16.dp),
+                OutlinedTextField(
+                    value = keyInput,
+                    onValueChange = { keyInput = it.trim() },
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .padding(16.dp),
+                    singleLine = true,
+                    label = { Text(stringResource(R.string.weather_api_key_title)) },
+                    leadingIcon = { Icon(painterResource(R.drawable.rounded_key_24), contentDescription = null) },
+                    trailingIcon = {
+                        Row {
+                            IconButton(onClick = {
+                                HapticUtil.performVirtualKeyHaptic(view)
+                                clipboardText(context)?.let { keyInput = it.trim() }
+                            }) {
+                                Icon(painterResource(R.drawable.rounded_content_paste_24), contentDescription = stringResource(R.string.shorten_paste_button))
+                            }
+                            IconButton(onClick = {
+                                HapticUtil.performVirtualKeyHaptic(view)
+                                keyVisible = !keyVisible
+                            }) {
+                                Icon(
+                                    painterResource(if (keyVisible) R.drawable.rounded_visibility_off_24 else R.drawable.rounded_visibility_24),
+                                    contentDescription = null,
+                                )
+                            }
+                        }
+                    },
+                    visualTransformation = if (keyVisible) VisualTransformation.None else PasswordVisualTransformation(),
+                    keyboardOptions = KeyboardOptions(
+                        keyboardType = KeyboardType.Password,
+                        autoCorrectEnabled = false,
+                        imeAction = ImeAction.Done,
+                    ),
+                    shape = RoundedCornerShape(16.dp),
+                )
+            }
+            IconToggleItem(
+                iconRes = R.drawable.rounded_tune_24,
+                title = stringResource(R.string.ai_advanced_title),
+                showToggle = false,
+                onClick = { advancedExpanded = !advancedExpanded },
+                trailingContent = {
+                    Icon(
+                        painter = painterResource(if (advancedExpanded) R.drawable.rounded_keyboard_arrow_up_24 else R.drawable.rounded_keyboard_arrow_down_24),
+                        contentDescription = null,
+                        tint = MaterialTheme.colorScheme.onSurfaceVariant,
                     )
-                    if (provider.needsBaseUrl) {
+                },
+            )
+            AnimatedVisibility(
+                visible = advancedExpanded,
+                enter = expandVertically() + fadeIn(),
+                exit = shrinkVertically() + fadeOut(),
+            ) {
+                Surface(
+                    color = MaterialTheme.colorScheme.surfaceBright,
+                    shape = MaterialTheme.shapes.extraSmall,
+                    modifier = Modifier.fillMaxWidth(),
+                ) {
+                    Column(Modifier.padding(16.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
                         OutlinedTextField(
-                            value = baseUrlInput,
-                            onValueChange = { baseUrlInput = it.trim() },
+                            value = modelInput,
+                            onValueChange = { modelInput = it.trim() },
                             modifier = Modifier.fillMaxWidth(),
                             singleLine = true,
-                            label = { Text(stringResource(R.string.ai_base_url_title)) },
-                            placeholder = { Text(provider.defaultBaseUrl.orEmpty()) },
-                            keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Uri, autoCorrectEnabled = false, imeAction = ImeAction.Done),
+                            label = { Text(stringResource(R.string.ai_model_title)) },
+                            placeholder = { Text(provider.defaultModel) },
+                            keyboardOptions = KeyboardOptions(autoCorrectEnabled = false, imeAction = ImeAction.Done),
                             shape = RoundedCornerShape(16.dp),
                         )
+                        if (provider.needsBaseUrl) {
+                            OutlinedTextField(
+                                value = baseUrlInput,
+                                onValueChange = { baseUrlInput = it.trim() },
+                                modifier = Modifier.fillMaxWidth(),
+                                singleLine = true,
+                                label = { Text(stringResource(R.string.ai_base_url_title)) },
+                                placeholder = { Text(provider.defaultBaseUrl.orEmpty()) },
+                                keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Uri, autoCorrectEnabled = false, imeAction = ImeAction.Done),
+                                shape = RoundedCornerShape(16.dp),
+                            )
+                        }
                     }
                 }
             }
@@ -251,7 +263,7 @@ private fun AiProviderConfig(provider: AiProvider, settings: SettingsRepository)
                             }
                         }
                     },
-                    enabled = !testing && !changed && savedKey.isNotEmpty() && weatherState.snapshot != null,
+                    enabled = !testing && !changed && (!provider.requiresApiKey || savedKey.isNotEmpty()) && weatherState.snapshot != null,
                 ) {
                     if (testing) {
                         LoadingIndicator(Modifier.size(24.dp))
@@ -259,20 +271,22 @@ private fun AiProviderConfig(provider: AiProvider, settings: SettingsRepository)
                         Icon(painterResource(R.drawable.rounded_refresh_24), contentDescription = stringResource(R.string.weather_refresh))
                     }
                 }
-                Spacer(Modifier.width(8.dp))
-                Button(
-                    onClick = {
-                        HapticUtil.performVirtualKeyHaptic(view)
-                        settings.setAiApiKey(provider.id, keyInput)
-                        settings.setAiModel(provider.id, modelInput)
-                        if (provider.needsBaseUrl) settings.setAiBaseUrl(provider.id, baseUrlInput)
-                        savedKey = keyInput
-                        savedModel = modelInput
-                        savedBaseUrl = baseUrlInput
-                    },
-                    enabled = changed,
-                ) {
-                    Text(stringResource(R.string.action_save))
+                if (provider.requiresApiKey) {
+                    Spacer(Modifier.width(8.dp))
+                    Button(
+                        onClick = {
+                            HapticUtil.performVirtualKeyHaptic(view)
+                            settings.setAiApiKey(provider.id, keyInput)
+                            settings.setAiModel(provider.id, modelInput)
+                            if (provider.needsBaseUrl) settings.setAiBaseUrl(provider.id, baseUrlInput)
+                            savedKey = keyInput
+                            savedModel = modelInput
+                            savedBaseUrl = baseUrlInput
+                        },
+                        enabled = changed,
+                    ) {
+                        Text(stringResource(R.string.action_save))
+                    }
                 }
             }
         }

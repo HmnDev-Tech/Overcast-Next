@@ -193,6 +193,9 @@
     <string name="ai_error_network">Couldn\'t reach the AI service</string>
     <string name="ai_error_unknown">Couldn\'t get advice</string>
     <string name="ai_error_model">Model not found</string>
+    <string name="ai_error_unsupported">On-device AI isn\'t available on this device</string>
+    <string name="ai_error_download">Couldn\'t download the on-device model</string>
+    <string name="ai_provider_on_device">On-device</string>
     <string name="ai_error_unavailable">The AI service is busy, try again later</string>
     <string name="aqi_error">Couldn\'t load air quality</string>
 </resources>

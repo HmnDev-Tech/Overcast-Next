@@ -144,6 +144,8 @@ internal fun aiErrorText(error: AiException): String {
         when (error.reason) {
             AiException.Reason.INVALID_KEY -> R.string.ai_error_invalid_key
             AiException.Reason.MODEL_NOT_FOUND -> R.string.ai_error_model
+            AiException.Reason.UNSUPPORTED -> R.string.ai_error_unsupported
+            AiException.Reason.DOWNLOAD_FAILED -> R.string.ai_error_download
             AiException.Reason.RATE_LIMITED -> R.string.ai_error_rate_limited
             AiException.Reason.UNAVAILABLE -> R.string.ai_error_unavailable
             AiException.Reason.NETWORK -> R.string.ai_error_network

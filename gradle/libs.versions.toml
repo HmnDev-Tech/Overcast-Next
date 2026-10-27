@@ -20,6 +20,7 @@ composeUi = "1.13.0-alpha03"
 aboutlibraries = "15.2.0"
 coil = "2.7.0"
 glance = "1.2.0"
+mlkitGenaiPrompt = "1.0.0-beta2"
 
 [libraries]
 androidx-core-ktx = { group = "androidx.core", name = "core-ktx", version.ref = "coreKtx" }
@@ -51,6 +52,7 @@ coil-compose = { module = "io.coil-kt:coil-compose", version.ref = "coil" }
 aboutlibraries-core = { group = "com.mikepenz", name = "aboutlibraries-core", version.ref = "aboutlibraries" }
 aboutlibraries-compose-m3 = { group = "com.mikepenz", name = "aboutlibraries-compose-m3", version.ref = "aboutlibraries" }
 gson = { group = "com.google.code.gson", name = "gson", version.ref = "gson" }
+mlkit-genai-prompt = { module = "com.google.mlkit:genai-prompt", version.ref = "mlkitGenaiPrompt" }
 
 [plugins]
 android-application = { id = "com.android.application", version.ref = "agp" }
