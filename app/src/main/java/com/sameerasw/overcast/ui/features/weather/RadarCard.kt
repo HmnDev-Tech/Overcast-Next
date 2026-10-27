@@ -3,6 +3,9 @@ package com.sameerasw.overcast.ui.features.weather
 import android.content.Context
 import android.content.SharedPreferences
 import androidx.compose.animation.AnimatedVisibility
+import androidx.compose.animation.core.Spring
+import androidx.compose.animation.core.animate
+import androidx.compose.animation.core.spring
 import androidx.compose.animation.expandVertically
 import androidx.compose.animation.fadeIn
 import androidx.compose.animation.fadeOut
@@ -28,6 +31,7 @@ import androidx.compose.runtime.mutableFloatStateOf
 import androidx.compose.runtime.mutableIntStateOf
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
+import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
@@ -56,6 +60,8 @@ import com.sameerasw.overcast.weather.radar.RadarMap
 import com.sameerasw.overcast.weather.radar.RadarProviders
 import com.sameerasw.overcast.weather.radar.RadarRepository
 import kotlinx.coroutines.CancellationException
+import kotlinx.coroutines.Job
+import kotlinx.coroutines.launch
 import kotlin.math.roundToInt
 
 @Composable
@@ -107,6 +113,7 @@ fun RadarSection(snapshot: WeatherSnapshot, palette: WeatherPalette, modifier: M
 
 private const val RADAR_TILES_ACROSS = 1.2f
 private const val MAX_RADAR_ZOOM = 4f
+private const val DOUBLE_TAP_ZOOM = 2.5f
 
 // Inverts the light OSM tiles and dims them so the map sits under the dark UI.
 private val BaseMapFilter = ColorFilter.colorMatrix(
@@ -130,7 +137,10 @@ private fun RadarTiles(radar: RadarMap, palette: WeatherPalette) {
     var scale by remember { mutableFloatStateOf(1f) }
     var pan by remember { mutableStateOf(Offset.Zero) }
     val halfSize = remember { floatArrayOf(0f, 0f) }
+    val scope = rememberCoroutineScope()
+    var zoomJob by remember { mutableStateOf<Job?>(null) }
     val transformState = rememberTransformableState { zoomChange, panChange, _ ->
+        zoomJob?.cancel()
         scale = (scale * zoomChange).coerceIn(1f, MAX_RADAR_ZOOM)
         val limitX = halfSize[0] * (scale - 1f)
         val limitY = halfSize[1] * (scale - 1f)
@@ -144,9 +154,23 @@ private fun RadarTiles(radar: RadarMap, palette: WeatherPalette) {
             .clip(MaterialTheme.shapes.extraLarge)
             .background(Color(0xFF0E0E10))
             .pointerInput(Unit) {
-                detectTapGestures(onDoubleTap = {
-                    scale = 1f
-                    pan = Offset.Zero
+                detectTapGestures(onDoubleTap = { tap ->
+                    val fromScale = scale
+                    val fromPan = pan
+                    val toScale = if (fromScale > 1.01f) 1f else DOUBLE_TAP_ZOOM
+                    val center = Offset(halfSize[0], halfSize[1])
+                    val point = (tap - center - fromPan) / fromScale
+                    val limitX = halfSize[0] * (toScale - 1f)
+                    val limitY = halfSize[1] * (toScale - 1f)
+                    val target = tap - center - point * toScale
+                    val toPan = Offset(target.x.coerceIn(-limitX, limitX), target.y.coerceIn(-limitY, limitY))
+                    zoomJob?.cancel()
+                    zoomJob = scope.launch {
+                        animate(0f, 1f, animationSpec = spring(dampingRatio = 0.85f, stiffness = Spring.StiffnessMediumLow)) { t, _ ->
+                            scale = fromScale + (toScale - fromScale) * t
+                            pan = fromPan + (toPan - fromPan) * t
+                        }
+                    }
                 })
             }
             .transformable(transformState, canPan = { scale > 1.01f }),
