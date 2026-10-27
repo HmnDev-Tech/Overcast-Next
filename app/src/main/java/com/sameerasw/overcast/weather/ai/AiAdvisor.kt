@@ -28,6 +28,9 @@ object AiAdvisor {
     private val _version = MutableStateFlow(0)
     val version: StateFlow<Int> = _version.asStateFlow()
 
+    private val _lastError = MutableStateFlow<AiException?>(null)
+    val lastError: StateFlow<AiException?> = _lastError.asStateFlow()
+
     fun buildPrompt(snapshot: WeatherSnapshot, units: WeatherUnits, locale: Locale = Locale.getDefault()): String {
         val lang = locale.getDisplayLanguage(Locale.ENGLISH).ifBlank { "English" }
         val alerts = snapshot.activeAlerts().take(3).joinToString("; ") { it.headline }
@@ -59,11 +62,17 @@ object AiAdvisor {
         if (provider.isOff || apiKey == null) throw AiException(AiException.Reason.NOT_CONFIGURED)
         val model = settings.getAiModel(provider.id) ?: provider.defaultModel
         val prompt = buildPrompt(snapshot, units)
-        val text = if (provider.id == AiProviders.gemini.id) {
-            adviseGemini(apiKey, model, prompt)
-        } else {
-            adviseOpenAiCompatible(settings.getAiBaseUrl(provider.id) ?: provider.defaultBaseUrl.orEmpty(), apiKey, model, prompt)
+        val text = try {
+            if (provider.id == AiProviders.gemini.id) {
+                adviseGemini(apiKey, model, prompt)
+            } else {
+                adviseOpenAiCompatible(settings.getAiBaseUrl(provider.id) ?: provider.defaultBaseUrl.orEmpty(), apiKey, model, prompt)
+            }
+        } catch (e: AiException) {
+            _lastError.value = e
+            throw e
         }
+        _lastError.value = null
         signature(settings, snapshot, units)?.let {
             cachePrefs(context).edit().putString(KEY_SIGNATURE, it).putString(KEY_TEXT, text).apply()
         }

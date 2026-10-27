@@ -194,6 +194,5 @@
     <string name="ai_error_unknown">Couldn\'t get advice</string>
     <string name="ai_error_model">Model not found</string>
     <string name="ai_error_unavailable">The AI service is busy, try again later</string>
-    <string name="ai_advice_ready">Advice updated</string>
     <string name="aqi_error">Couldn\'t load air quality</string>
 </resources>

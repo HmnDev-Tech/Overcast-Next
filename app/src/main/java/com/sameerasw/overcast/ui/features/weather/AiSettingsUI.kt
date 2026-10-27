@@ -54,7 +54,6 @@ import com.sameerasw.overcast.utils.HapticUtil
 import com.sameerasw.overcast.weather.WeatherRepository
 import com.sameerasw.overcast.weather.WeatherUnits
 import com.sameerasw.overcast.weather.ai.AiAdvisor
-import com.sameerasw.overcast.weather.ai.AiException
 import com.sameerasw.overcast.weather.ai.AiProvider
 import com.sameerasw.overcast.weather.ai.AiProviders
 import kotlinx.coroutines.CancellationException
@@ -123,8 +122,7 @@ private fun AiProviderConfig(provider: AiProvider, settings: SettingsRepository)
     val scope = rememberCoroutineScope()
     val weatherState by WeatherRepository.state.collectAsState()
     var testing by remember { mutableStateOf(false) }
-    var testError by remember(provider.id) { mutableStateOf<AiException?>(null) }
-    var testDone by remember(provider.id) { mutableStateOf(false) }
+    val lastError by AiAdvisor.lastError.collectAsState()
     val changed = keyInput != savedKey || modelInput != savedModel || (provider.needsBaseUrl && baseUrlInput != savedBaseUrl)
 
     Column(verticalArrangement = Arrangement.spacedBy(2.dp)) {
@@ -242,18 +240,12 @@ private fun AiProviderConfig(provider: AiProvider, settings: SettingsRepository)
                         HapticUtil.performVirtualKeyHaptic(view)
                         val snapshot = weatherState.snapshot ?: return@FilledTonalIconButton
                         testing = true
-                        testError = null
-                        testDone = false
                         scope.launch {
                             try {
                                 AiAdvisor.advise(context, snapshot, WeatherUnits.from(settings), force = true)
-                                testDone = true
-                            } catch (e: AiException) {
-                                testError = e
                             } catch (e: CancellationException) {
                                 throw e
-                            } catch (e: Exception) {
-                                testError = AiException(AiException.Reason.BAD_RESPONSE, e.message)
+                            } catch (_: Exception) {
                             } finally {
                                 testing = false
                             }
@@ -285,13 +277,14 @@ private fun AiProviderConfig(provider: AiProvider, settings: SettingsRepository)
             }
         }
         AnimatedVisibility(
-            visible = testError != null || testDone,
+            visible = lastError != null,
             enter = expandVertically() + fadeIn(),
             exit = shrinkVertically() + fadeOut(),
         ) {
-            val error = testError
+            val shownError = remember { mutableStateOf(lastError) }
+            if (lastError != null) shownError.value = lastError
             Surface(
-                color = if (error != null) MaterialTheme.colorScheme.errorContainer else MaterialTheme.colorScheme.secondaryContainer,
+                color = MaterialTheme.colorScheme.errorContainer,
                 shape = MaterialTheme.shapes.extraSmall,
                 modifier = Modifier.fillMaxWidth(),
             ) {
@@ -300,16 +293,15 @@ private fun AiProviderConfig(provider: AiProvider, settings: SettingsRepository)
                     verticalAlignment = Alignment.CenterVertically,
                     horizontalArrangement = Arrangement.spacedBy(12.dp),
                 ) {
-                    val contentColor = if (error != null) MaterialTheme.colorScheme.onErrorContainer else MaterialTheme.colorScheme.onSecondaryContainer
                     Icon(
-                        painterResource(if (error != null) R.drawable.rounded_warning_24 else R.drawable.rounded_check_24),
+                        painterResource(R.drawable.rounded_warning_24),
                         contentDescription = null,
-                        tint = contentColor,
+                        tint = MaterialTheme.colorScheme.onErrorContainer,
                     )
                     Text(
-                        text = if (error != null) aiErrorText(error) else stringResource(R.string.ai_advice_ready),
+                        text = shownError.value?.let { aiErrorText(it) }.orEmpty(),
                         style = MaterialTheme.typography.bodyMedium,
-                        color = contentColor,
+                        color = MaterialTheme.colorScheme.onErrorContainer,
                     )
                 }
             }

@@ -165,7 +165,7 @@ fun AqiSection(snapshot: WeatherSnapshot, palette: WeatherPalette, modifier: Mod
                             horizontalAlignment = Alignment.CenterHorizontally,
                             verticalArrangement = Arrangement.spacedBy(8.dp),
                         ) {
-                            AqiBadge(aqi.aqi, palette.accent)
+                            AqiBadge(aqi.aqi, aqiColor(aqi.category))
                             Text(
                                 aqiLabel(aqi.category),
                                 color = aqiColor(aqi.category),
@@ -197,7 +197,7 @@ fun AqiSection(snapshot: WeatherSnapshot, palette: WeatherPalette, modifier: Mod
 }
 
 @Composable
-private fun AqiBadge(aqi: Int?, accent: Color) {
+private fun AqiBadge(aqi: Int?, color: Color) {
     val progress by animateFloatAsState(
         targetValue = ((aqi ?: 0) / AQI_SCALE_MAX).coerceIn(0f, 1f),
         animationSpec = spring(dampingRatio = Spring.DampingRatioLowBouncy, stiffness = Spring.StiffnessLow),
@@ -220,12 +220,12 @@ private fun AqiBadge(aqi: Int?, accent: Color) {
                 )
                 onDrawBehind {
                     val fillTop = size.height * (1f - progress)
-                    drawOutline(outline, accent.copy(alpha = 0.18f))
+                    drawOutline(outline, color.copy(alpha = 0.22f))
                     clipRect(bottom = fillTop) {
-                        drawText(layout, color = accent, topLeft = textOffset)
+                        drawText(layout, color = color, topLeft = textOffset)
                     }
                     clipRect(top = fillTop) {
-                        drawOutline(outline, accent)
+                        drawOutline(outline, color)
                         drawText(layout, color = Color.Black, topLeft = textOffset, blendMode = BlendMode.Clear)
                     }
                 }
