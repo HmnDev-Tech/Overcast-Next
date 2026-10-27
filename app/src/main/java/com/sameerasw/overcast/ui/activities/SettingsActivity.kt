@@ -120,7 +120,7 @@ class SettingsActivity : ComponentActivity() {
                             }
                             WeatherSettingsUI(modifier = Modifier.padding(top = 16.dp))
 
-                            AiSettingsUI(modifier = Modifier.padding(top = 0.dp))
+                            AiSettingsUI(modifier = Modifier.padding(top = 16.dp))
 
                             Spacer(Modifier.height(32.dp))
 

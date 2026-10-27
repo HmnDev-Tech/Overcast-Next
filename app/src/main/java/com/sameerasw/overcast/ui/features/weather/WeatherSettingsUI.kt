@@ -452,7 +452,7 @@ private fun CompatibilityInfoSheet(onDismiss: () -> Unit) {
 }
 
 @Composable
-private fun SectionTitle(res: Int) {
+internal fun SectionTitle(res: Int) {
     Text(
         text = stringResource(res),
         style = MaterialTheme.typography.titleSmall,
@@ -484,12 +484,12 @@ private fun errorText(context: Context, error: WeatherError): String {
     return if (detail != null) "$base: $detail" else base
 }
 
-private fun clipboardText(context: Context): String? {
+internal fun clipboardText(context: Context): String? {
     val clipboard = context.getSystemService(Context.CLIPBOARD_SERVICE) as? ClipboardManager ?: return null
     return clipboard.primaryClip?.takeIf { it.itemCount > 0 }?.getItemAt(0)?.coerceToText(context)?.toString()
 }
 
-private fun openUrl(context: Context, url: String) {
+internal fun openUrl(context: Context, url: String) {
     try {
         context.startActivity(Intent(Intent.ACTION_VIEW, Uri.parse(url)).addFlags(Intent.FLAG_ACTIVITY_NEW_TASK))
     } catch (_: Exception) {

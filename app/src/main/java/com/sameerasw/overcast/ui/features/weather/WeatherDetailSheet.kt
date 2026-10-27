@@ -572,8 +572,8 @@ fun WeatherScreen(onOpenSettings: () -> Unit = {}) {
                                         snapshot.upcomingDays().takeIf { it.isNotEmpty() }
                                             ?.let { DailySection(it, units.temperature, palette, Modifier.padding(horizontal = SIDE_PADDING)) }
                                         DetailsSection(snapshot, units, palette, Modifier.padding(horizontal = SIDE_PADDING))
-                                        AiAdviceSection(snapshot, palette, Modifier.padding(horizontal = SIDE_PADDING))
-                                        AqiSection(palette, Modifier.padding(horizontal = SIDE_PADDING))
+                                        AiAdviceSection(state.snapshot ?: snapshot, units, palette, Modifier.padding(horizontal = SIDE_PADDING))
+                                        AqiSection(state.snapshot ?: snapshot, palette, Modifier.padding(horizontal = SIDE_PADDING))
                                         SunSection(snapshot, palette, Modifier.padding(horizontal = SIDE_PADDING))
                                         Footer(
                                             modifier = Modifier.padding(horizontal = SIDE_PADDING).rainSurface("footer"),
@@ -618,8 +618,8 @@ fun WeatherScreen(onOpenSettings: () -> Unit = {}) {
                                             ) {
                                             HourlySection(snapshot, units.temperature, palette)
                                             DetailsSection(snapshot, units, palette, Modifier.padding(horizontal = SIDE_PADDING))
-                                            AiAdviceSection(snapshot, palette, Modifier.padding(horizontal = SIDE_PADDING))
-                                            AqiSection(palette, Modifier.padding(horizontal = SIDE_PADDING))
+                                            AiAdviceSection(state.snapshot ?: snapshot, units, palette, Modifier.padding(horizontal = SIDE_PADDING))
+                                            AqiSection(state.snapshot ?: snapshot, palette, Modifier.padding(horizontal = SIDE_PADDING))
                                             Footer(
                                                 modifier = Modifier.padding(horizontal = SIDE_PADDING).rainSurface("footer"),
                                                 snapshot = snapshot,

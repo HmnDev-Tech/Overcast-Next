@@ -7,9 +7,20 @@ data class AiProvider(
     val defaultBaseUrl: String?,
     val signupUrl: String?,
     val needsBaseUrl: Boolean = false,
-)
+) {
+    val isOff: Boolean get() = id == AiProviders.OFF_ID
+}
 
 object AiProviders {
+    const val OFF_ID = "off"
+
+    val off = AiProvider(
+        id = OFF_ID,
+        displayName = "",
+        defaultModel = "",
+        defaultBaseUrl = null,
+        signupUrl = null,
+    )
     val gemini = AiProvider(
         id = "gemini",
         displayName = "Gemini (AI Studio)",
@@ -28,13 +39,13 @@ object AiProviders {
     val openrouter = AiProvider(
         id = "openrouter",
         displayName = "OpenRouter",
-        defaultModel = "google/gemini-flash-1.5",
+        defaultModel = "google/gemini-2.5-flash-lite",
         defaultBaseUrl = "https://openrouter.ai/api/v1",
         signupUrl = "https://openrouter.ai/keys",
         needsBaseUrl = true,
     )
 
-    val all: List<AiProvider> = listOf(gemini, openai, openrouter)
+    val all: List<AiProvider> = listOf(off, gemini, openai, openrouter)
 
-    fun byId(id: String?): AiProvider = all.firstOrNull { it.id == id } ?: gemini
+    fun byId(id: String?): AiProvider = all.firstOrNull { it.id == id } ?: off
 }

@@ -183,10 +183,14 @@
     <string name="aqi_unhealthy">Unhealthy</string>
     <string name="aqi_very_unhealthy">Very unhealthy</string>
     <string name="aqi_hazardous">Hazardous</string>
-    <string name="ai_section_title">AI advice</string>
+    <string name="ai_section_title">Weather advice</string>
     <string name="ai_provider_title">AI provider</string>
     <string name="ai_model_title">Model</string>
     <string name="ai_base_url_title">API base URL</string>
-    <string name="ai_advice_title">What to wear today</string>
-    <string name="ai_advice_no_key">Add an AI key in settings to get outfit and umbrella tips.</string>
+    <string name="ai_advanced_title">Advanced</string>
+    <string name="ai_error_invalid_key">The AI key was rejected</string>
+    <string name="ai_error_rate_limited">AI limit reached, try again later</string>
+    <string name="ai_error_network">Couldn\'t reach the AI service</string>
+    <string name="ai_error_unknown">Couldn\'t get advice</string>
+    <string name="aqi_error">Couldn\'t load air quality</string>
 </resources>

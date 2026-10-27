@@ -1,6 +1,7 @@
 package com.sameerasw.overcast.ui.features.weather
 
 import androidx.compose.foundation.layout.Arrangement
+import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.fillMaxWidth
@@ -15,46 +16,48 @@ import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableIntStateOf
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
-import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.platform.LocalContext
+import androidx.compose.ui.platform.LocalView
 import androidx.compose.ui.res.painterResource
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.unit.dp
 import com.sameerasw.overcast.R
+import com.sameerasw.overcast.utils.HapticUtil
 import com.sameerasw.overcast.weather.aqi.AqiCategory
 import com.sameerasw.overcast.weather.aqi.AqiData
 import com.sameerasw.overcast.weather.aqi.AqiRepository
-import kotlinx.coroutines.launch
+import com.sameerasw.overcast.weather.model.WeatherSnapshot
+import kotlinx.coroutines.CancellationException
 
 @Composable
-fun AqiSection(palette: WeatherPalette, modifier: Modifier = Modifier) {
+fun AqiSection(snapshot: WeatherSnapshot, palette: WeatherPalette, modifier: Modifier = Modifier) {
     val context = LocalContext.current
-    val scope = rememberCoroutineScope()
+    val view = LocalView.current
     var data by remember { mutableStateOf<AqiData?>(null) }
     var loading by remember { mutableStateOf(true) }
-    var error by remember { mutableStateOf<String?>(null) }
+    var failed by remember { mutableStateOf(false) }
+    var refreshTick by remember { mutableIntStateOf(0) }
 
-    fun load() {
-        scope.launch {
-            loading = true
-            error = null
-            try {
-                data = AqiRepository.current(context)
-            } catch (e: Exception) {
-                error = e.message
-            } finally {
-                loading = false
-            }
+    LaunchedEffect(snapshot.updatedAt, snapshot.locationName, refreshTick) {
+        loading = true
+        failed = false
+        try {
+            data = AqiRepository.current(context)
+        } catch (e: CancellationException) {
+            throw e
+        } catch (_: Exception) {
+            failed = true
+        } finally {
+            loading = false
         }
     }
-
-    LaunchedEffect(Unit) { load() }
 
     Column(modifier) {
         Surface(
@@ -76,49 +79,59 @@ fun AqiSection(palette: WeatherPalette, modifier: Modifier = Modifier) {
                         style = MaterialTheme.typography.titleMedium,
                         modifier = Modifier.weight(1f),
                     )
-                    IconButton(onClick = { load() }, modifier = Modifier.size(32.dp)) {
-                        Icon(
-                            painterResource(R.drawable.rounded_refresh_24),
-                            contentDescription = stringResource(R.string.weather_refresh),
-                            tint = palette.onBaseMuted,
-                            modifier = Modifier.size(18.dp),
-                        )
+                    Box(Modifier.size(32.dp), contentAlignment = Alignment.Center) {
+                        if (loading) {
+                            LoadingIndicator(Modifier.size(32.dp))
+                        } else {
+                            IconButton(
+                                onClick = {
+                                    HapticUtil.performVirtualKeyHaptic(view)
+                                    refreshTick++
+                                },
+                                modifier = Modifier.size(32.dp),
+                            ) {
+                                Icon(
+                                    painterResource(R.drawable.rounded_refresh_24),
+                                    contentDescription = stringResource(R.string.weather_refresh),
+                                    tint = palette.onBaseMuted,
+                                    modifier = Modifier.size(18.dp),
+                                )
+                            }
+                        }
                     }
                 }
-                when {
-                    loading -> LoadingIndicator(Modifier.size(48.dp))
-                    error != null -> Text(
-                        error ?: stringResource(R.string.weather_error_unknown),
+                data?.let { aqi ->
+                    Row(verticalAlignment = Alignment.Bottom, horizontalArrangement = Arrangement.spacedBy(12.dp)) {
+                        Text(
+                            aqi.aqi?.toString() ?: "—",
+                            color = aqiColor(aqi.category),
+                            style = MaterialTheme.typography.displaySmall,
+                        )
+                        Text(
+                            aqiLabel(aqi.category),
+                            color = palette.onBaseMuted,
+                            style = MaterialTheme.typography.titleSmall,
+                            modifier = Modifier.padding(bottom = 6.dp),
+                        )
+                    }
+                    Row(horizontalArrangement = Arrangement.spacedBy(16.dp)) {
+                        aqi.pm25?.let { Pollutant("PM2.5", it, palette) }
+                        aqi.pm10?.let { Pollutant("PM10", it, palette) }
+                        aqi.ozone?.let { Pollutant("O₃", it, palette) }
+                        aqi.no2?.let { Pollutant("NO₂", it, palette) }
+                    }
+                    Text(
+                        stringResource(R.string.aqi_source),
+                        color = palette.onBaseMuted,
+                        style = MaterialTheme.typography.labelSmall,
+                    )
+                }
+                if (failed && data == null) {
+                    Text(
+                        stringResource(R.string.aqi_error),
                         color = palette.onBaseMuted,
                         style = MaterialTheme.typography.bodyMedium,
                     )
-                    data != null -> {
-                        val aqi = data!!
-                        Row(verticalAlignment = Alignment.Bottom, horizontalArrangement = Arrangement.spacedBy(12.dp)) {
-                            Text(
-                                aqi.aqi?.toString() ?: "—",
-                                color = aqiColor(aqi.category),
-                                style = MaterialTheme.typography.displaySmall,
-                            )
-                            Text(
-                                aqiLabel(aqi.category),
-                                color = palette.onBaseMuted,
-                                style = MaterialTheme.typography.titleSmall,
-                                modifier = Modifier.padding(bottom = 6.dp),
-                            )
-                        }
-                        Row(horizontalArrangement = Arrangement.spacedBy(16.dp)) {
-                            aqi.pm25?.let { Pollutant("PM2.5", it, palette) }
-                            aqi.pm10?.let { Pollutant("PM10", it, palette) }
-                            aqi.ozone?.let { Pollutant("O₃", it, palette) }
-                            aqi.no2?.let { Pollutant("NO₂", it, palette) }
-                        }
-                        Text(
-                            stringResource(R.string.aqi_source),
-                            color = palette.onBaseMuted,
-                            style = MaterialTheme.typography.labelSmall,
-                        )
-                    }
                 }
             }
         }

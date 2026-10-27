@@ -1,9 +1,10 @@
 package com.sameerasw.overcast.ui.features.weather
 
-import android.content.ClipboardManager
-import android.content.Context
-import android.content.Intent
-import android.net.Uri
+import androidx.compose.animation.AnimatedVisibility
+import androidx.compose.animation.expandVertically
+import androidx.compose.animation.fadeIn
+import androidx.compose.animation.fadeOut
+import androidx.compose.animation.shrinkVertically
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
@@ -41,93 +42,141 @@ import com.sameerasw.overcast.R
 import com.sameerasw.overcast.data.repository.SettingsRepository
 import com.sameerasw.overcast.ui.components.menus.SegmentedDropdownMenuItem
 import com.sameerasw.overcast.ui.core.cards.ConfigPickerItem
+import com.sameerasw.overcast.ui.core.cards.IconToggleItem
 import com.sameerasw.overcast.ui.core.containers.RoundedCardContainer
 import com.sameerasw.overcast.utils.HapticUtil
+import com.sameerasw.overcast.weather.ai.AiProvider
 import com.sameerasw.overcast.weather.ai.AiProviders
 
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
 fun AiSettingsUI(modifier: Modifier = Modifier) {
     val context = LocalContext.current
-    val view = LocalView.current
     val settings = remember { SettingsRepository(context) }
-    var providerId by remember { mutableStateOf(settings.getAiProvider()) }
+    var providerId by remember { mutableStateOf(AiProviders.byId(settings.getAiProvider()).id) }
     val provider = AiProviders.byId(providerId)
-    var savedKey by remember(providerId) { mutableStateOf(settings.getAiApiKey(providerId).orEmpty()) }
-    var keyInput by remember(providerId) { mutableStateOf(savedKey) }
-    var keyVisible by remember { mutableStateOf(false) }
-    var modelInput by remember(providerId) { mutableStateOf(settings.getAiModel(providerId) ?: provider.defaultModel) }
-    var baseUrlInput by remember(providerId) { mutableStateOf(settings.getAiBaseUrl(providerId) ?: provider.defaultBaseUrl.orEmpty()) }
+    var shownProviderId by remember { mutableStateOf(providerId.takeIf { !provider.isOff } ?: AiProviders.gemini.id) }
+    val offLabel = stringResource(R.string.widget_forecast_off)
 
     Column(
-        modifier = modifier.fillMaxWidth().padding(horizontal = 16.dp),
+        modifier = modifier
+            .fillMaxWidth()
+            .padding(horizontal = 16.dp),
         verticalArrangement = Arrangement.spacedBy(16.dp),
     ) {
-        Text(
-            text = stringResource(R.string.ai_section_title),
-            style = MaterialTheme.typography.titleSmall,
-            color = MaterialTheme.colorScheme.onSurfaceVariant,
-            modifier = Modifier.padding(start = 8.dp),
-        )
+        SectionTitle(R.string.ai_section_title)
         RoundedCardContainer(spacing = 2.dp, cornerRadius = 24.dp) {
             ConfigPickerItem(
                 title = stringResource(R.string.ai_provider_title),
-                selectedValue = provider.displayName,
+                selectedValue = if (provider.isOff) offLabel else provider.displayName,
                 iconRes = R.drawable.rounded_model_training_24,
                 modifier = Modifier.fillMaxWidth(),
             ) {
                 AiProviders.all.forEach { option ->
                     SegmentedDropdownMenuItem(
-                        text = { Text(option.displayName) },
+                        text = { Text(if (option.isOff) offLabel else option.displayName) },
                         onClick = {
                             if (option.id != providerId) {
                                 settings.setAiProvider(option.id)
                                 providerId = option.id
+                                if (!option.isOff) shownProviderId = option.id
                             }
                         },
                     )
                 }
             }
+            AnimatedVisibility(
+                visible = !provider.isOff,
+                enter = expandVertically() + fadeIn(),
+                exit = shrinkVertically() + fadeOut(),
+            ) {
+                AiProviderConfig(AiProviders.byId(shownProviderId), settings)
+            }
+        }
+    }
+}
+
+@Composable
+private fun AiProviderConfig(provider: AiProvider, settings: SettingsRepository) {
+    val context = LocalContext.current
+    val view = LocalView.current
+    var savedKey by remember(provider.id) { mutableStateOf(settings.getAiApiKey(provider.id).orEmpty()) }
+    var savedModel by remember(provider.id) { mutableStateOf(settings.getAiModel(provider.id).orEmpty()) }
+    var savedBaseUrl by remember(provider.id) { mutableStateOf(settings.getAiBaseUrl(provider.id).orEmpty()) }
+    var keyInput by remember(provider.id) { mutableStateOf(savedKey) }
+    var modelInput by remember(provider.id) { mutableStateOf(savedModel) }
+    var baseUrlInput by remember(provider.id) { mutableStateOf(savedBaseUrl) }
+    var keyVisible by remember { mutableStateOf(false) }
+    var advancedExpanded by remember { mutableStateOf(false) }
+    val changed = keyInput != savedKey || modelInput != savedModel || (provider.needsBaseUrl && baseUrlInput != savedBaseUrl)
+
+    Column(verticalArrangement = Arrangement.spacedBy(2.dp)) {
+        Surface(
+            color = MaterialTheme.colorScheme.surfaceBright,
+            shape = MaterialTheme.shapes.extraSmall,
+            modifier = Modifier.fillMaxWidth(),
+        ) {
+            OutlinedTextField(
+                value = keyInput,
+                onValueChange = { keyInput = it.trim() },
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .padding(16.dp),
+                singleLine = true,
+                label = { Text(stringResource(R.string.weather_api_key_title)) },
+                leadingIcon = { Icon(painterResource(R.drawable.rounded_key_24), contentDescription = null) },
+                trailingIcon = {
+                    Row {
+                        IconButton(onClick = {
+                            HapticUtil.performVirtualKeyHaptic(view)
+                            clipboardText(context)?.let { keyInput = it.trim() }
+                        }) {
+                            Icon(painterResource(R.drawable.rounded_content_paste_24), contentDescription = stringResource(R.string.shorten_paste_button))
+                        }
+                        IconButton(onClick = {
+                            HapticUtil.performVirtualKeyHaptic(view)
+                            keyVisible = !keyVisible
+                        }) {
+                            Icon(
+                                painterResource(if (keyVisible) R.drawable.rounded_visibility_off_24 else R.drawable.rounded_visibility_24),
+                                contentDescription = null,
+                            )
+                        }
+                    }
+                },
+                visualTransformation = if (keyVisible) VisualTransformation.None else PasswordVisualTransformation(),
+                keyboardOptions = KeyboardOptions(
+                    keyboardType = KeyboardType.Password,
+                    autoCorrectEnabled = false,
+                    imeAction = ImeAction.Done,
+                ),
+                shape = RoundedCornerShape(16.dp),
+            )
+        }
+        IconToggleItem(
+            iconRes = R.drawable.rounded_tune_24,
+            title = stringResource(R.string.ai_advanced_title),
+            showToggle = false,
+            onClick = { advancedExpanded = !advancedExpanded },
+            trailingContent = {
+                Icon(
+                    painter = painterResource(if (advancedExpanded) R.drawable.rounded_keyboard_arrow_up_24 else R.drawable.rounded_keyboard_arrow_down_24),
+                    contentDescription = null,
+                    tint = MaterialTheme.colorScheme.onSurfaceVariant,
+                )
+            },
+        )
+        AnimatedVisibility(
+            visible = advancedExpanded,
+            enter = expandVertically() + fadeIn(),
+            exit = shrinkVertically() + fadeOut(),
+        ) {
             Surface(
                 color = MaterialTheme.colorScheme.surfaceBright,
                 shape = MaterialTheme.shapes.extraSmall,
                 modifier = Modifier.fillMaxWidth(),
             ) {
                 Column(Modifier.padding(16.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
-                    OutlinedTextField(
-                        value = keyInput,
-                        onValueChange = { keyInput = it.trim() },
-                        modifier = Modifier.fillMaxWidth(),
-                        singleLine = true,
-                        label = { Text(stringResource(R.string.weather_api_key_title)) },
-                        leadingIcon = { Icon(painterResource(R.drawable.rounded_key_24), contentDescription = null) },
-                        trailingIcon = {
-                            Row {
-                                IconButton(onClick = {
-                                    HapticUtil.performVirtualKeyHaptic(view)
-                                    clipboardText(context)?.let { keyInput = it.trim() }
-                                }) {
-                                    Icon(painterResource(R.drawable.rounded_content_paste_24), contentDescription = stringResource(R.string.shorten_paste_button))
-                                }
-                                IconButton(onClick = {
-                                    HapticUtil.performVirtualKeyHaptic(view)
-                                    keyVisible = !keyVisible
-                                }) {
-                                    Icon(
-                                        painterResource(if (keyVisible) R.drawable.rounded_visibility_off_24 else R.drawable.rounded_visibility_24),
-                                        contentDescription = null,
-                                    )
-                                }
-                            }
-                        },
-                        visualTransformation = if (keyVisible) VisualTransformation.None else PasswordVisualTransformation(),
-                        keyboardOptions = KeyboardOptions(
-                            keyboardType = KeyboardType.Password,
-                            autoCorrectEnabled = false,
-                            imeAction = ImeAction.Done,
-                        ),
-                        shape = RoundedCornerShape(16.dp),
-                    )
                     OutlinedTextField(
                         value = modelInput,
                         onValueChange = { modelInput = it.trim() },
@@ -150,43 +199,42 @@ fun AiSettingsUI(modifier: Modifier = Modifier) {
                             shape = RoundedCornerShape(16.dp),
                         )
                     }
-                    Row(verticalAlignment = Alignment.CenterVertically) {
-                        provider.signupUrl?.let { url ->
-                            TextButton(onClick = {
-                                HapticUtil.performVirtualKeyHaptic(view)
-                                openAiUrl(context, url)
-                            }) {
-                                Text(stringResource(R.string.weather_get_api_key))
-                            }
-                        }
-                        Spacer(Modifier.weight(1f))
-                        Button(
-                            onClick = {
-                                HapticUtil.performVirtualKeyHaptic(view)
-                                settings.setAiApiKey(providerId, keyInput)
-                                settings.setAiModel(providerId, modelInput.ifBlank { provider.defaultModel })
-                                if (provider.needsBaseUrl) settings.setAiBaseUrl(providerId, baseUrlInput.ifBlank { provider.defaultBaseUrl })
-                                savedKey = keyInput
-                            },
-                            enabled = keyInput != savedKey || modelInput != (settings.getAiModel(providerId) ?: provider.defaultModel),
-                        ) {
-                            Text(stringResource(R.string.action_save))
-                        }
-                    }
                 }
             }
         }
-    }
-}
-
-private fun clipboardText(context: Context): String? {
-    val clipboard = context.getSystemService(Context.CLIPBOARD_SERVICE) as? ClipboardManager ?: return null
-    return clipboard.primaryClip?.takeIf { it.itemCount > 0 }?.getItemAt(0)?.coerceToText(context)?.toString()
-}
-
-private fun openAiUrl(context: Context, url: String) {
-    try {
-        context.startActivity(Intent(Intent.ACTION_VIEW, Uri.parse(url)).addFlags(Intent.FLAG_ACTIVITY_NEW_TASK))
-    } catch (_: Exception) {
+        Surface(
+            color = MaterialTheme.colorScheme.surfaceBright,
+            shape = MaterialTheme.shapes.extraSmall,
+            modifier = Modifier.fillMaxWidth(),
+        ) {
+            Row(
+                modifier = Modifier.padding(horizontal = 8.dp, vertical = 8.dp),
+                verticalAlignment = Alignment.CenterVertically,
+            ) {
+                provider.signupUrl?.let { url ->
+                    TextButton(onClick = {
+                        HapticUtil.performVirtualKeyHaptic(view)
+                        openUrl(context, url)
+                    }) {
+                        Text(stringResource(R.string.weather_get_api_key))
+                    }
+                }
+                Spacer(Modifier.weight(1f))
+                Button(
+                    onClick = {
+                        HapticUtil.performVirtualKeyHaptic(view)
+                        settings.setAiApiKey(provider.id, keyInput)
+                        settings.setAiModel(provider.id, modelInput)
+                        if (provider.needsBaseUrl) settings.setAiBaseUrl(provider.id, baseUrlInput)
+                        savedKey = keyInput
+                        savedModel = modelInput
+                        savedBaseUrl = baseUrlInput
+                    },
+                    enabled = changed,
+                ) {
+                    Text(stringResource(R.string.action_save))
+                }
+            }
+        }
     }
 }

@@ -5,6 +5,7 @@ import android.content.SharedPreferences
 import com.sameerasw.overcast.utils.CompatibilityMode
 import com.sameerasw.overcast.utils.DeviceUtils
 import com.sameerasw.overcast.weather.WeatherIconStyle
+import com.sameerasw.overcast.weather.ai.AiProviders
 import com.sameerasw.overcast.weather.effects.WeatherSimulation
 import com.sameerasw.overcast.weather.widget.WeatherWidgetUpdater
 import com.sameerasw.overcast.weather.effects.WeatherSimulationPreset
@@ -195,8 +196,13 @@ class SettingsRepository(
 
     fun aiApiKeyName(providerId: String) = "${KEY_AI_API_KEY}_$providerId"
 
-    fun getAiProvider(): String = getString(KEY_AI_PROVIDER, "gemini") ?: "gemini"
+    fun getAiProvider(): String = getString(KEY_AI_PROVIDER, AiProviders.OFF_ID) ?: AiProviders.OFF_ID
     fun setAiProvider(id: String) = putString(KEY_AI_PROVIDER, id)
+
+    fun isAiAdviceAvailable(): Boolean {
+        val provider = AiProviders.byId(getAiProvider())
+        return !provider.isOff && getAiApiKey(provider.id) != null
+    }
 
     fun getAiApiKey(providerId: String): String? =
         getString(aiApiKeyName(providerId), null)?.takeIf { it.isNotBlank() }
