@@ -64,7 +64,7 @@
     <string name="weather_location_device">Current location</string>
     <string name="weather_model_title">Forecast model</string>
     <string name="weather_not_loaded">Not loaded yet</string>
-    <string name="weather_provider_title">Provider</string>
+    <string name="weather_provider_title">Weather provider</string>
     <string name="weather_refresh_interval_title">Refresh every</string>
     <string name="weather_search_city">Search for a city</string>
     <string name="weather_search_no_results">No cities found</string>
@@ -176,6 +176,7 @@
     <!-- Required by the Yandex Weather terms (point 2.4); keep the wording. -->
     <string name="weather_attribution_yandex">The data is provided by the Yandex Weather service.</string>
     <string name="aqi_title">Air quality</string>
+    <string name="aqi_provider_title">Air quality provider</string>
     <string name="aqi_source">US AQI · Open-Meteo Air Quality</string>
     <string name="aqi_good">Good</string>
     <string name="aqi_moderate">Moderate</string>

@@ -40,6 +40,15 @@ enum class AqiCategory {
     }
 }
 
+object AqiProviders {
+    const val OFF_ID = "off"
+    const val OPEN_METEO_ID = "openmeteo"
+
+    val all: List<Pair<String, String?>> = listOf(OFF_ID to null, OPEN_METEO_ID to "Open-Meteo")
+
+    fun resolve(id: String?): String = all.firstOrNull { it.first == id }?.first ?: OPEN_METEO_ID
+}
+
 object AqiRepository {
     suspend fun current(context: Context): AqiData {
         val loc = WeatherRepository.lastKnownLocation(context) ?: throw AqiException("No location for AQI")

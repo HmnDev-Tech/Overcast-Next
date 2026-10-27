@@ -68,6 +68,7 @@ import com.sameerasw.overcast.weather.WeatherIconStyle
 import com.sameerasw.overcast.weather.WeatherRepository
 import com.sameerasw.overcast.weather.WeatherUnits
 import com.sameerasw.overcast.weather.WindSpeedUnit
+import com.sameerasw.overcast.weather.aqi.AqiProviders
 import com.sameerasw.overcast.weather.model.WeatherError
 import com.sameerasw.overcast.weather.provider.OpenMeteoModels
 import com.sameerasw.overcast.weather.provider.WeatherProviders
@@ -229,6 +230,24 @@ fun WeatherSettingsUI(
                                 }
                             }
                         }
+                    }
+                }
+                var aqiProviderId by remember { mutableStateOf(AqiProviders.resolve(settings.getAqiProvider())) }
+                val offLabel = stringResource(R.string.widget_forecast_off)
+                ConfigPickerItem(
+                    title = stringResource(R.string.aqi_provider_title),
+                    selectedValue = AqiProviders.all.first { it.first == aqiProviderId }.second ?: offLabel,
+                    iconRes = R.drawable.rounded_air_24,
+                    modifier = Modifier.fillMaxWidth(),
+                ) {
+                    AqiProviders.all.forEach { (id, name) ->
+                        SegmentedDropdownMenuItem(
+                            text = { Text(name ?: offLabel) },
+                            onClick = {
+                                aqiProviderId = id
+                                settings.setAqiProvider(id)
+                            },
+                        )
                     }
                 }
                 ConfigPickerItem(

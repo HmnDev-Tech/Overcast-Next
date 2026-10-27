@@ -1,5 +1,12 @@
 package com.sameerasw.overcast.ui.features.weather
 
+import android.content.Context
+import android.content.SharedPreferences
+import androidx.compose.animation.AnimatedVisibility
+import androidx.compose.animation.expandVertically
+import androidx.compose.animation.fadeIn
+import androidx.compose.animation.fadeOut
+import androidx.compose.animation.shrinkVertically
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
@@ -14,6 +21,7 @@ import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.DisposableEffect
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableIntStateOf
@@ -29,9 +37,11 @@ import androidx.compose.ui.res.painterResource
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.unit.dp
 import com.sameerasw.overcast.R
+import com.sameerasw.overcast.data.repository.SettingsRepository
 import com.sameerasw.overcast.utils.HapticUtil
 import com.sameerasw.overcast.weather.aqi.AqiCategory
 import com.sameerasw.overcast.weather.aqi.AqiData
+import com.sameerasw.overcast.weather.aqi.AqiProviders
 import com.sameerasw.overcast.weather.aqi.AqiRepository
 import com.sameerasw.overcast.weather.model.WeatherSnapshot
 import kotlinx.coroutines.CancellationException
@@ -44,8 +54,19 @@ fun AqiSection(snapshot: WeatherSnapshot, palette: WeatherPalette, modifier: Mod
     var loading by remember { mutableStateOf(true) }
     var failed by remember { mutableStateOf(false) }
     var refreshTick by remember { mutableIntStateOf(0) }
+    val settings = remember { SettingsRepository(context) }
+    var enabled by remember { mutableStateOf(settings.getAqiProvider() != AqiProviders.OFF_ID) }
+    DisposableEffect(context) {
+        val prefs = context.getSharedPreferences(SettingsRepository.PREFS_NAME, Context.MODE_PRIVATE)
+        val listener = SharedPreferences.OnSharedPreferenceChangeListener { _, key ->
+            if (key == SettingsRepository.KEY_AQI_PROVIDER) enabled = settings.getAqiProvider() != AqiProviders.OFF_ID
+        }
+        prefs.registerOnSharedPreferenceChangeListener(listener)
+        onDispose { prefs.unregisterOnSharedPreferenceChangeListener(listener) }
+    }
 
-    LaunchedEffect(snapshot.updatedAt, snapshot.locationName, refreshTick) {
+    LaunchedEffect(enabled, snapshot.updatedAt, snapshot.locationName, refreshTick) {
+        if (!enabled) return@LaunchedEffect
         loading = true
         failed = false
         try {
@@ -59,7 +80,12 @@ fun AqiSection(snapshot: WeatherSnapshot, palette: WeatherPalette, modifier: Mod
         }
     }
 
-    Column(modifier) {
+    AnimatedVisibility(
+        visible = enabled,
+        modifier = modifier,
+        enter = expandVertically() + fadeIn(),
+        exit = shrinkVertically() + fadeOut(),
+    ) {
         Surface(
             color = palette.card,
             shape = MaterialTheme.shapes.extraLarge,
