@@ -95,6 +95,8 @@
     <string name="widget_hourly_label">Overcast hourly</string>
     <string name="widget_hourly_description">Hourly forecast that shows more hours as you widen it</string>
     <string name="widget_hourly_now">Now</string>
+    <string name="widget_daily_label">Overcast daily</string>
+    <string name="widget_daily_description">Daily forecast that shows more days as you widen it</string>
     <string name="widget_config_title">Widget background</string>
     <string name="widget_config_section_background">Background</string>
     <string name="widget_config_section_forecast">Forecast</string>
