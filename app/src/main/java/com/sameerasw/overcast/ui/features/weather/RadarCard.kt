@@ -109,7 +109,7 @@ private const val RADAR_TILES_ACROSS = 1.2f
 private const val MAX_RADAR_ZOOM = 4f
 
 // Inverts the light OSM tiles and dims them so the map sits under the dark UI.
-private val DarkMapFilter = ColorFilter.colorMatrix(
+private val BaseMapFilter = ColorFilter.colorMatrix(
     ColorMatrix(
         floatArrayOf(
             -0.6f, 0f, 0f, 0f, 160f,
@@ -119,6 +119,9 @@ private val DarkMapFilter = ColorFilter.colorMatrix(
         ),
     ),
 )
+
+// RainViewer's free palette draws light rain in a pale beige; boosting saturation turns it into a readable amber.
+private val RainFilter = ColorFilter.colorMatrix(ColorMatrix().apply { setToSaturation(2.4f) })
 
 @Composable
 private fun RadarTiles(radar: RadarMap, palette: WeatherPalette) {
@@ -164,10 +167,10 @@ private fun RadarTiles(radar: RadarMap, palette: WeatherPalette) {
                 },
         ) {
             radar.baseTiles.forEach { tile ->
-                MapTileImage(tile, unitPx, originX, originY, density, DarkMapFilter, 1f, context)
+                MapTileImage(tile, unitPx, originX, originY, density, BaseMapFilter, 1f, context)
             }
             radar.overlayTiles.forEach { tile ->
-                MapTileImage(tile, unitPx, originX, originY, density, null, 0.85f, context)
+                MapTileImage(tile, unitPx, originX, originY, density, RainFilter, 1f, context)
             }
         }
         Box(
