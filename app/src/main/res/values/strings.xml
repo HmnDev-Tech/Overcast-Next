@@ -350,6 +350,14 @@
     <string name="notify_summary_title">Today in %1$s</string>
     <string name="notify_rain_title">Rain soon</string>
     <string name="notify_rain_from">Rain from %1$s</string>
+    <string name="notify_sky_alert">Sky events</string>
+    <string name="notify_channel_sky">Sky events</string>
+    <string name="notify_sky_peaks">Peaks tonight around %1$s</string>
+    <string name="notify_sky_clear">Skies look clear</string>
+    <string name="notify_sky_cloudy">Clouds may get in the way</string>
+    <string name="notify_sky_aurora">%1$s expected. Look toward the pole after dark</string>
+    <string name="notify_sky_snow">Snow expected around %1$s</string>
+    <string name="notify_sky_today">Today</string>
     <string name="onboarding_perm_notifications_title">Notifications</string>
     <string name="onboarding_perm_notifications_usage">Optional. For a morning summary and a heads-up before rain.</string>
     <string name="nowcast_none">No rain expected in the next 2 hours</string>

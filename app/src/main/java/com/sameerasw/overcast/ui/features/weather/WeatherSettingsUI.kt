@@ -599,6 +599,7 @@ fun WeatherSettingsUI(
                 var summary by remember { mutableStateOf(settings.isMorningSummaryEnabled() && WeatherNotifications.canPost(context)) }
                 var summaryHour by remember { mutableIntStateOf(settings.getMorningSummaryHour()) }
                 var rainAlerts by remember { mutableStateOf(settings.isRainAlertEnabled() && WeatherNotifications.canPost(context)) }
+                var skyAlerts by remember { mutableStateOf(settings.isSkyAlertEnabled() && WeatherNotifications.canPost(context)) }
                 var pendingToggle by remember { mutableStateOf<((Boolean) -> Unit)?>(null) }
                 val notificationLauncher = rememberLauncherForActivityResult(ActivityResultContracts.RequestPermission()) { granted ->
                     pendingToggle?.invoke(granted)
@@ -654,6 +655,19 @@ fun WeatherSettingsUI(
                         val apply: (Boolean) -> Unit = { allowed ->
                             rainAlerts = checked && allowed
                             settings.setRainAlertEnabled(rainAlerts)
+                        }
+                        if (checked) withPermission(apply) else apply(true)
+                    },
+                )
+                IconToggleItem(
+                    iconRes = R.drawable.rounded_auto_awesome_24,
+                    title = stringResource(R.string.notify_sky_alert),
+                    isChecked = skyAlerts,
+                    onCheckedChange = { checked ->
+                        HapticUtil.performVirtualKeyHaptic(view)
+                        val apply: (Boolean) -> Unit = { allowed ->
+                            skyAlerts = checked && allowed
+                            settings.setSkyAlertEnabled(skyAlerts)
                         }
                         if (checked) withPermission(apply) else apply(true)
                     },

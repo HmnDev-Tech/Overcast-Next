@@ -23,14 +23,23 @@ import com.sameerasw.overcast.weather.WeatherFormat
 import com.sameerasw.overcast.weather.WeatherRepository
 import com.sameerasw.overcast.weather.WeatherUnits
 import com.sameerasw.overcast.weather.model.WeatherSnapshot
+import com.sameerasw.overcast.weather.sky.AuroraForecast
+import com.sameerasw.overcast.weather.sky.SkyEventKind
+import com.sameerasw.overcast.weather.sky.SkyEvents
 import java.text.DateFormat
 import java.util.Calendar
 import java.util.Date
 import java.util.concurrent.TimeUnit
+import kotlin.math.abs
 
 object WeatherNotifications {
     private const val CHANNEL_SUMMARY = "daily_summary"
     private const val CHANNEL_RAIN = "rain_soon"
+    private const val CHANNEL_SKY = "sky_events"
+    private const val ID_SKY_BASE = 3200
+    private const val SKY_PREFS = "sky_alerts"
+    private const val KEY_SKY_SENT = "sent"
+    private const val HOUR_MS = 60 * 60_000L
     private const val ID_SUMMARY = 3101
     private const val ID_RAIN = 3102
     private const val SUMMARY_WORK = "morning_summary"
@@ -51,6 +60,9 @@ object WeatherNotifications {
         )
         manager.createNotificationChannel(
             NotificationChannel(CHANNEL_RAIN, context.getString(R.string.notify_channel_rain), NotificationManager.IMPORTANCE_HIGH),
+        )
+        manager.createNotificationChannel(
+            NotificationChannel(CHANNEL_SKY, context.getString(R.string.notify_channel_sky), NotificationManager.IMPORTANCE_DEFAULT),
         )
     }
 
@@ -142,6 +154,52 @@ object WeatherNotifications {
         settings.setLastRainAlertMillis(startsAt)
         val minutes = ((startsAt - now) / 60_000L).toInt().coerceAtLeast(5)
         post(context, CHANNEL_RAIN, ID_RAIN, context.getString(R.string.notify_rain_title), context.getString(R.string.nowcast_rain_starting, minutes))
+    }
+
+    suspend fun checkSkyEvents(context: Context, snapshot: WeatherSnapshot) {
+        val settings = SettingsRepository(context)
+        if (!settings.isSkyAlertEnabled() || !canPost(context)) return
+        val now = System.currentTimeMillis()
+        val latitude = WeatherRepository.lastFetchLocation()?.latitude
+        val kp = if (latitude != null && abs(latitude) >= 44.0) runCatching { AuroraForecast.kpForecast() }.getOrDefault(emptyList()) else emptyList()
+        val prefs = context.getSharedPreferences(SKY_PREFS, Context.MODE_PRIVATE)
+        val sent = prefs.getStringSet(KEY_SKY_SENT, emptySet()).orEmpty().filter { key ->
+            key.substringAfterLast(':').toLongOrNull()?.let { it * HOUR_MS > now - 30L * 24 * HOUR_MS } == true
+        }.toMutableSet()
+        val hour = Calendar.getInstance().apply { timeInMillis = now }.get(Calendar.HOUR_OF_DAY)
+        val quiet = hour >= 23 || hour < 7
+        SkyEvents.upcoming(context, snapshot, latitude, kp, now).forEach { event ->
+            val until = event.timeMillis - now
+            val due = when (event.kind) {
+                SkyEventKind.METEOR_SHOWER -> until in 0..8 * HOUR_MS
+                SkyEventKind.AURORA -> until in -3 * HOUR_MS..12 * HOUR_MS
+                SkyEventKind.FIRST_SNOW, SkyEventKind.SOLAR_ECLIPSE, SkyEventKind.LUNAR_ECLIPSE -> until in 0..24 * HOUR_MS
+                SkyEventKind.SOLSTICE, SkyEventKind.EQUINOX -> until in -6 * HOUR_MS..12 * HOUR_MS
+                SkyEventKind.NEW_MOON -> false
+            }
+            if (!due || (quiet && event.kind != SkyEventKind.AURORA)) return@forEach
+            val key = "${event.kind.name}:${event.timeMillis / HOUR_MS}"
+            if (key in sent) return@forEach
+            val title = event.name?.let { context.getString(event.titleRes, it) } ?: context.getString(event.titleRes)
+            val time = DateFormat.getTimeInstance(DateFormat.SHORT).format(Date(event.timeMillis))
+            val text = when (event.kind) {
+                SkyEventKind.METEOR_SHOWER -> {
+                    val cloud = snapshot.hourly.minByOrNull { abs(it.timeMillis - event.timeMillis) }?.cloudCover
+                    listOfNotNull(
+                        context.getString(R.string.notify_sky_peaks, time),
+                        cloud?.let { context.getString(if (it < 40) R.string.notify_sky_clear else R.string.notify_sky_cloudy) },
+                        event.detailRes?.let { context.getString(it) },
+                    ).joinToString(" · ")
+                }
+                SkyEventKind.AURORA -> context.getString(R.string.notify_sky_aurora, event.detail.orEmpty())
+                SkyEventKind.FIRST_SNOW -> context.getString(R.string.notify_sky_snow, time)
+                SkyEventKind.SOLAR_ECLIPSE, SkyEventKind.LUNAR_ECLIPSE ->
+                    listOfNotNull(time, event.detail ?: event.detailRes?.let { context.getString(it) }).joinToString(" · ")
+                else -> context.getString(R.string.notify_sky_today)
+            }
+            if (post(context, CHANNEL_SKY, ID_SKY_BASE + event.kind.ordinal, title, text)) sent += key
+        }
+        prefs.edit().putStringSet(KEY_SKY_SENT, sent).apply()
     }
 
     private fun isToday(millis: Long, now: Long): Boolean {
