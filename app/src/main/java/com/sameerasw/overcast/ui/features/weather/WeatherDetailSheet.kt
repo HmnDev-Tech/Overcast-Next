@@ -1357,14 +1357,6 @@ private fun DetailsSection(snapshot: WeatherSnapshot, units: WeatherUnits, palet
     val extras = snapshot.extras
     val details = buildList {
         snapshot.humidity?.let { add(Detail(WeatherDetailSlot.HUMIDITY, R.string.weather_detail_humidity, "$it%")) }
-        add(
-            Detail(
-                WeatherDetailSlot.WIND,
-                R.string.weather_detail_wind,
-                WeatherFormat.wind(snapshot.windKph, units.wind) + (extras?.windDirectionDeg?.let { " ${compass(it)}" } ?: ""),
-            ),
-        )
-        extras?.windGustKph?.let { add(Detail(WeatherDetailSlot.GUSTS, R.string.weather_detail_gusts, WeatherFormat.wind(it, units.wind))) }
         snapshot.chanceOfRain?.let { add(Detail(WeatherDetailSlot.RAIN_CHANCE, R.string.weather_detail_rain_chance, "$it%")) }
         extras?.precipitationMm?.let {
             add(Detail(WeatherDetailSlot.PRECIPITATION, R.string.weather_detail_precipitation, WeatherFormat.precipitation(it, units.precipitation)))
