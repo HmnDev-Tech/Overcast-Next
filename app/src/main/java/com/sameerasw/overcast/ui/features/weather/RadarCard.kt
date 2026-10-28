@@ -102,6 +102,10 @@ import androidx.compose.material3.carousel.rememberCarouselState
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.height
 import androidx.compose.runtime.SideEffect
+import androidx.compose.material3.Slider
+import androidx.compose.material3.SliderDefaults
+import androidx.compose.animation.core.tween
+import androidx.compose.animation.core.FastOutSlowInEasing
 import kotlin.math.PI
 import kotlin.math.cos
 import kotlin.math.roundToInt
@@ -269,6 +273,9 @@ fun RadarSection(snapshot: WeatherSnapshot, units: WeatherUnits, palette: Weathe
             ) {
                 if (!fullscreen) mapView(Modifier.fillMaxSize(), false)
             }
+            AnimatedVisibility(visible = ui.layer.playable && ui.frameCount > 1) {
+                TimelineSlider(ui, palette)
+            }
         }
     }
 }
@@ -282,6 +289,9 @@ internal val LocalMapFullscreenHost = staticCompositionLocalOf<MapFullscreenHost
 
 private class MapUiState {
     var layer by mutableStateOf(MapLayer.WIND)
+    var frameIndex by mutableIntStateOf(0)
+    var frameCount by mutableIntStateOf(0)
+    var playing by mutableStateOf(true)
     var unitPx = 0f
 }
 
@@ -352,6 +362,48 @@ private fun FullscreenMap(
 
 private val CARD_TOP_CORNER = 4.dp
 private val CARD_BOTTOM_CORNER = 28.dp
+
+@Composable
+private fun TimelineSlider(ui: MapUiState, palette: WeatherPalette) {
+    val view = LocalView.current
+    val scope = rememberCoroutineScope()
+    val position = remember { Animatable(ui.frameIndex.toFloat()) }
+    var dragging by remember { mutableStateOf(false) }
+    LaunchedEffect(ui.frameIndex, dragging) {
+        if (dragging) return@LaunchedEffect
+        val target = ui.frameIndex.toFloat()
+        if (abs(target - position.value) > 1.5f) {
+            position.snapTo(target)
+        } else {
+            position.animateTo(target, tween(SLIDER_STEP_MS, easing = FastOutSlowInEasing))
+        }
+    }
+    Surface(color = palette.card, shape = MaterialTheme.shapes.extraSmall, modifier = Modifier.fillMaxWidth()) {
+        Slider(
+            value = position.value.coerceIn(0f, (ui.frameCount - 1).coerceAtLeast(1).toFloat()),
+            onValueChange = { value ->
+                dragging = true
+                ui.playing = false
+                scope.launch { position.snapTo(value) }
+                val next = value.roundToInt()
+                if (next != ui.frameIndex) {
+                    HapticUtil.performSliderHaptic(view)
+                    ui.frameIndex = next
+                }
+            },
+            onValueChangeFinished = { dragging = false },
+            valueRange = 0f..(ui.frameCount - 1).coerceAtLeast(1).toFloat(),
+            colors = SliderDefaults.colors(
+                thumbColor = palette.accent,
+                activeTrackColor = palette.accent,
+                inactiveTrackColor = palette.onBaseMuted.copy(alpha = 0.25f),
+            ),
+            modifier = Modifier.padding(horizontal = 16.dp, vertical = 4.dp),
+        )
+    }
+}
+
+private const val SLIDER_STEP_MS = 450
 
 @Composable
 private fun ModeCarousel(
@@ -440,8 +492,12 @@ private fun MapView(
     val layer = if (ui.layer in layers) ui.layer else MapLayer.WIND
     val frames = remember(radar, grid, layer) { framesFor(layer, radar, grid) }
     val nowIndex = frames.indexOfLast { it.radarIndex >= 0 }.coerceAtLeast(0)
-    var frameIndex by remember(frames) { mutableIntStateOf(0) }
-    var playing by remember(layer) { mutableStateOf(true) }
+    LaunchedEffect(frames) {
+        ui.frameCount = frames.size
+        ui.frameIndex = 0
+        ui.playing = true
+    }
+    val frameIndex = ui.frameIndex.coerceIn(0, (frames.size - 1).coerceAtLeast(0))
     val frame = frames.getOrNull(frameIndex)
     var compassOn by remember { mutableStateOf(false) }
     LaunchedEffect(layer) {
@@ -469,11 +525,12 @@ private fun MapView(
             rotation = if (abs(delta) < 0.05f) target else rotation + delta * 0.12f
         }
     }
-    LaunchedEffect(frames, playing) {
-        if (!playing || frames.size < 2) return@LaunchedEffect
+    LaunchedEffect(frames, ui.playing) {
+        if (!ui.playing || frames.size < 2) return@LaunchedEffect
         while (true) {
-            delay(if (frameIndex == frames.lastIndex || (frameIndex == nowIndex && nowIndex > 0)) LOOP_HOLD_MS else LOOP_FRAME_MS)
-            frameIndex = (frameIndex + 1) % frames.size
+            val current = ui.frameIndex
+            delay(if (current == frames.lastIndex || (current == nowIndex && nowIndex > 0)) LOOP_HOLD_MS else LOOP_FRAME_MS)
+            ui.frameIndex = (current + 1) % frames.size
         }
     }
     val scope = rememberCoroutineScope()
@@ -493,7 +550,7 @@ private fun MapView(
                 detectTapGestures(
                     onTap = {
                         HapticUtil.performVirtualKeyHaptic(view)
-                        if (layer.playable) playing = !playing else compassOn = !compassOn
+                        if (layer.playable) ui.playing = !ui.playing else compassOn = !compassOn
                     },
                     onDoubleTap = { tap ->
                         val fromScale = scale
@@ -602,7 +659,7 @@ private fun MapView(
                     verticalAlignment = Alignment.CenterVertically,
                     horizontalArrangement = Arrangement.spacedBy(6.dp),
                 ) {
-                    if (!playing && frames.size > 1) {
+                    if (!ui.playing && frames.size > 1) {
                         Icon(painterResource(R.drawable.rounded_pause_24), contentDescription = null, modifier = Modifier.size(16.dp))
                     }
                     Text(frameLabel(context, frame, layer, grid, radar, units), style = MaterialTheme.typography.labelMedium)
