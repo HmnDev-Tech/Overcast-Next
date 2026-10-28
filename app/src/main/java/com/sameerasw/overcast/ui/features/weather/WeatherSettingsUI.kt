@@ -126,6 +126,7 @@ fun WeatherSettingsUI(
     var showPreciseInfo by remember { mutableStateOf(false) }
     var showSections by remember { mutableStateOf(false) }
     var effects by remember { mutableStateOf(settings.isWeatherEffectsEnabled()) }
+    var locationScene by remember { mutableStateOf(settings.isLocationSceneEnabled()) }
     var weatherHaptics by remember { mutableStateOf(settings.isWeatherHapticsEnabled()) }
     var refreshMinutes by remember { mutableIntStateOf(settings.getWeatherRefreshMinutes()) }
     var savedKey by remember { mutableStateOf(settings.getWeatherApiKey(providerId).orEmpty()) }
@@ -540,6 +541,16 @@ fun WeatherSettingsUI(
                         HapticUtil.performVirtualKeyHaptic(view)
                         effects = it
                         settings.setWeatherEffectsEnabled(it)
+                    },
+                )
+                IconToggleItem(
+                    iconRes = R.drawable.rounded_landscape_24,
+                    title = stringResource(R.string.location_visualization_title),
+                    isChecked = locationScene,
+                    onCheckedChange = {
+                        HapticUtil.performVirtualKeyHaptic(view)
+                        locationScene = it
+                        settings.setLocationSceneEnabled(it)
                     },
                 )
                 IconToggleItem(

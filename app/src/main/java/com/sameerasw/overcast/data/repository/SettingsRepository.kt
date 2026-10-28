@@ -47,6 +47,7 @@ class SettingsRepository(
         const val KEY_WEATHER_REFRESH_MINUTES = "weather_refresh_minutes"
         const val KEY_WEATHER_EFFECTS = "weather_effects"
         const val KEY_WEATHER_HAPTICS = "weather_haptics"
+        const val KEY_LOCATION_SCENE = "location_scene"
         const val KEY_AI_PROVIDER = "ai_provider"
         const val KEY_AI_API_KEY = "ai_api_key"
         const val KEY_AI_MODEL = "ai_model"
@@ -60,6 +61,7 @@ class SettingsRepository(
         const val KEY_DEBUG_SIMULATED_WEATHER = "debug_simulated_weather"
         const val KEY_DEBUG_SIMULATED_ALERT = "debug_simulated_alert"
         const val KEY_DEBUG_SIMULATED_TIME = "debug_simulated_time"
+        const val KEY_DEBUG_SIMULATED_SCENE = "debug_simulated_scene"
         const val KEY_DEBUG_SIMULATED_TEMP = "debug_simulated_temp"
 
         const val WEATHER_UNITS_SYSTEM = "system"
@@ -109,6 +111,9 @@ class SettingsRepository(
     fun isWeatherEffectsEnabled(): Boolean = getBoolean(KEY_WEATHER_EFFECTS, true)
     fun setWeatherEffectsEnabled(enabled: Boolean) = putBoolean(KEY_WEATHER_EFFECTS, enabled)
 
+    fun isLocationSceneEnabled(): Boolean = getBoolean(KEY_LOCATION_SCENE, false)
+    fun setLocationSceneEnabled(enabled: Boolean) = putBoolean(KEY_LOCATION_SCENE, enabled)
+
     fun isWeatherHapticsEnabled(): Boolean = getBoolean(KEY_WEATHER_HAPTICS, true)
     fun setWeatherHapticsEnabled(enabled: Boolean) = putBoolean(KEY_WEATHER_HAPTICS, enabled)
 
@@ -129,6 +134,9 @@ class SettingsRepository(
 
     fun getSimulatedTimeOfDay(): String? =
         if (isWeatherExperimentalEnabled()) getString(KEY_DEBUG_SIMULATED_TIME, "auto")?.takeIf { it != "auto" } else null
+
+    fun getSimulatedScene(): String? =
+        if (isWeatherExperimentalEnabled()) getString(KEY_DEBUG_SIMULATED_SCENE, "auto")?.takeIf { it != "auto" } else null
 
     fun getSimulatedTempC(): Double? =
         if (isWeatherExperimentalEnabled()) getString(KEY_DEBUG_SIMULATED_TEMP, "auto")?.toDoubleOrNull() else null
