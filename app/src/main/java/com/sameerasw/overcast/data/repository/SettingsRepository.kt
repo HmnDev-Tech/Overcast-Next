@@ -58,6 +58,7 @@ class SettingsRepository(
         const val KEY_MORNING_SUMMARY_HOUR = "morning_summary_hour"
         const val KEY_RAIN_ALERT = "rain_alert"
         const val KEY_SKY_ALERT = "sky_alert"
+        const val KEY_WALLPAPER_SMOOTH = "wallpaper_smooth"
         const val KEY_LAST_RAIN_ALERT = "last_rain_alert"
         const val KEY_DEBUG_SIMULATED_WEATHER = "debug_simulated_weather"
         const val KEY_DEBUG_SIMULATED_ALERT = "debug_simulated_alert"
@@ -262,6 +263,9 @@ class SettingsRepository(
     fun setMorningSummaryHour(hour: Int) = putInt(KEY_MORNING_SUMMARY_HOUR, hour)
     fun isRainAlertEnabled(): Boolean = getBoolean(KEY_RAIN_ALERT, false)
     fun setRainAlertEnabled(enabled: Boolean) = putBoolean(KEY_RAIN_ALERT, enabled)
+    fun isWallpaperSmoothEnabled(): Boolean = getBoolean(KEY_WALLPAPER_SMOOTH, false)
+    fun setWallpaperSmoothEnabled(enabled: Boolean) = putBoolean(KEY_WALLPAPER_SMOOTH, enabled)
+
     fun isSkyAlertEnabled(): Boolean = getBoolean(KEY_SKY_ALERT, false)
     fun setSkyAlertEnabled(enabled: Boolean) = putBoolean(KEY_SKY_ALERT, enabled)
 

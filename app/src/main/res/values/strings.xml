@@ -159,6 +159,7 @@
     <string name="weather_choose_location">Choose a location</string>
     <string name="share_action">Share</string>
     <string name="wallpaper_set">Live wallpaper</string>
+    <string name="wallpaper_smooth">Smooth animations</string>
     <string name="wallpaper_description">Live weather for where you are</string>
     <string name="sky_now">Now</string>
     <string name="sky_events_title">Sky events</string>

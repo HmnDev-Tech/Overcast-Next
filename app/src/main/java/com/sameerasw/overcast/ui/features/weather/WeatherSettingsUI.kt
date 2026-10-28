@@ -691,6 +691,17 @@ fun WeatherSettingsUI(
                             .onFailure { runCatching { context.startActivity(Intent(WallpaperManager.ACTION_LIVE_WALLPAPER_CHOOSER)) } }
                     },
                 )
+                var wallpaperSmooth by remember { mutableStateOf(settings.isWallpaperSmoothEnabled()) }
+                IconToggleItem(
+                    iconRes = R.drawable.rounded_speed_24,
+                    title = stringResource(R.string.wallpaper_smooth),
+                    isChecked = wallpaperSmooth,
+                    onCheckedChange = {
+                        HapticUtil.performVirtualKeyHaptic(view)
+                        wallpaperSmooth = it
+                        settings.setWallpaperSmoothEnabled(it)
+                    },
+                )
                 IconToggleItem(
                     iconRes = R.drawable.rounded_dashboard_24,
                     title = stringResource(R.string.screensaver_show_forecast),

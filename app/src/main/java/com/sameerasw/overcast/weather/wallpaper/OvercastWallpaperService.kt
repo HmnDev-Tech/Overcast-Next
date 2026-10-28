@@ -1,10 +1,7 @@
 package com.sameerasw.overcast.weather.wallpaper
 
-import android.content.BroadcastReceiver
-import android.content.Context
-import android.content.Intent
-import android.content.IntentFilter
 import android.content.SharedPreferences
+import android.app.KeyguardManager
 import android.graphics.Canvas
 import android.graphics.LinearGradient
 import android.graphics.Paint
@@ -14,7 +11,9 @@ import android.graphics.Shader
 import android.graphics.drawable.Drawable
 import android.os.Handler
 import android.os.Looper
+import android.os.PowerManager
 import android.service.wallpaper.WallpaperService
+import android.view.Choreographer
 import android.view.SurfaceHolder
 import androidx.compose.ui.geometry.Size
 import androidx.compose.ui.graphics.drawscope.CanvasDrawScope
@@ -41,6 +40,7 @@ import kotlinx.coroutines.Job
 import kotlinx.coroutines.SupervisorJob
 import kotlinx.coroutines.cancel
 import kotlinx.coroutines.launch
+import kotlin.math.sqrt
 import androidx.compose.ui.graphics.Canvas as ComposeCanvas
 
 class OvercastWallpaperService : WallpaperService() {
@@ -64,30 +64,64 @@ class OvercastWallpaperService : WallpaperService() {
         private var offsetX = 0.5f
         private val start = System.nanoTime()
         private var lastFrame = 0L
-        private var introStart = 0L
+        private var zoom = 1f
+        private var zoomVelocity = 0f
+
+        private val keyguard = getSystemService(KeyguardManager::class.java)
+        private var locked = false
+        private val power = getSystemService(PowerManager::class.java)
+        private var lockCheckedAt = 0L
+        private var smooth = settings.isWallpaperSmoothEnabled()
 
         private val frame = object : Runnable {
             override fun run() {
                 drawFrame()
-                if (visible) handler.postDelayed(this, FRAME_MS)
+                scheduleNext()
             }
+        }
+
+        private val vsyncFrame = Choreographer.FrameCallback {
+            drawFrame()
+            scheduleNext()
+        }
+
+        private fun scheduleNext() {
+            if (!visible) return
+            if (smooth) Choreographer.getInstance().postFrameCallback(vsyncFrame) else handler.postDelayed(frame, FRAME_MS)
+        }
+
+        private fun stopFrames() {
+            handler.removeCallbacks(frame)
+            Choreographer.getInstance().removeFrameCallback(vsyncFrame)
+        }
+
+        private fun checkLock(nanos: Long) {
+            if (nanos - lockCheckedAt < LOCK_CHECK_NS) return
+            lockCheckedAt = nanos
+            locked = keyguard?.isKeyguardLocked == true
+        }
+
+        private fun advanceZoom(dt: Float) {
+            val target = if (locked) LOCKED_ZOOM else 1f
+            val force = ZOOM_STIFFNESS * (target - zoom) - 2f * sqrt(ZOOM_STIFFNESS) * zoomVelocity
+            zoomVelocity += force * dt
+            zoom += zoomVelocity * dt
         }
 
         private val settingsListener = SharedPreferences.OnSharedPreferenceChangeListener { _, _ ->
             shown = null
-            loadScene()
-        }
-
-        private val unlockReceiver = object : BroadcastReceiver() {
-            override fun onReceive(context: Context, intent: Intent) {
-                if (visible) startIntro()
+            val nextSmooth = settings.isWallpaperSmoothEnabled()
+            if (nextSmooth != smooth) {
+                smooth = nextSmooth
+                stopFrames()
+                scheduleNext()
             }
+            loadScene()
         }
 
         override fun onCreate(surfaceHolder: SurfaceHolder) {
             super.onCreate(surfaceHolder)
             settings.registerChangeListener(settingsListener)
-            ContextCompat.registerReceiver(applicationContext, unlockReceiver, IntentFilter(Intent.ACTION_USER_PRESENT), ContextCompat.RECEIVER_NOT_EXPORTED)
             scope.launch {
                 WeatherRepository.ensureLoaded(applicationContext)
                 if (WeatherRepository.isStale(applicationContext)) launch { WeatherRepository.refresh(applicationContext) }
@@ -109,17 +143,16 @@ class OvercastWallpaperService : WallpaperService() {
             }
         }
 
-        private fun startIntro() {
-            introStart = System.nanoTime()
-        }
-
         override fun onVisibilityChanged(visible: Boolean) {
             this.visible = visible
-            handler.removeCallbacks(frame)
+            stopFrames()
             if (visible) {
                 lastFrame = 0L
-                startIntro()
+                lockCheckedAt = 0L
                 handler.post(frame)
+            } else if (power?.isInteractive == false) {
+                zoom = 0f
+                zoomVelocity = 0f
             }
         }
 
@@ -134,14 +167,13 @@ class OvercastWallpaperService : WallpaperService() {
 
         override fun onSurfaceDestroyed(holder: SurfaceHolder) {
             visible = false
-            handler.removeCallbacks(frame)
+            stopFrames()
             super.onSurfaceDestroyed(holder)
         }
 
         override fun onDestroy() {
-            handler.removeCallbacks(frame)
+            stopFrames()
             settings.unregisterChangeListener(settingsListener)
-            runCatching { applicationContext.unregisterReceiver(unlockReceiver) }
             scope.cancel()
             super.onDestroy()
         }
@@ -176,9 +208,13 @@ class OvercastWallpaperService : WallpaperService() {
             val height = canvas.height.toFloat()
             val now = System.currentTimeMillis()
             val nanos = System.nanoTime()
+            checkLock(nanos)
+            val dt = if (lastFrame == 0L) 0f else ((nanos - lastFrame) / 1_000_000_000f).coerceIn(0f, 0.1f)
+            lastFrame = nanos
+            advanceZoom(dt)
             val presentation = present(now)
             val palette = presentation.palette
-            val intro = introProgress(nanos)
+            val intro = zoom
 
             skyPaint.shader = LinearGradient(
                 0f, 0f, 0f, height,
@@ -206,20 +242,11 @@ class OvercastWallpaperService : WallpaperService() {
             }
 
             val t = (nanos - start) / 1_000_000_000f
-            val dt = if (lastFrame == 0L) 0f else ((nanos - lastFrame) / 1_000_000_000f).coerceIn(0f, 0.1f)
-            lastFrame = nanos
             renderer.update(presentation.spec)
             canvas.save()
             lerp(EFFECTS_START_SCALE, 1f, intro).let { canvas.scale(it, it, width / 2f, height / 2f) }
             drawScope.draw(density, LayoutDirection.Ltr, composeCanvas, Size(width, height)) { renderer.draw(this, t, dt, EFFECT_STRENGTH) }
             canvas.restore()
-        }
-
-        private fun introProgress(nanos: Long): Float {
-            if (introStart == 0L) return 1f
-            val x = ((nanos - introStart) / (INTRO_MS * 1_000_000f)).coerceIn(0f, 1f)
-            val inv = 1f - x
-            return 1f - inv * inv * inv
         }
 
         private fun drawScene(canvas: Canvas, drawable: Drawable, palette: WeatherPalette, width: Float, bottom: Float) {
@@ -252,13 +279,15 @@ class OvercastWallpaperService : WallpaperService() {
 
     private companion object {
         const val FRAME_MS = 33L
+        const val LOCK_CHECK_NS = 150_000_000L
         const val EFFECT_STRENGTH = 1.7f
         const val SKY_FRACTION = 0.42f
         const val SCENE_ASPECT = 140f / 360f
         const val SCENE_BOTTOM = 0.56f
         const val SCENE_ALPHA = 0.85f
         const val PARALLAX = 0.06f
-        const val INTRO_MS = 1100f
+        const val LOCKED_ZOOM = 0.55f
+        const val ZOOM_STIFFNESS = 22f
         const val SKY_START_SCALE = 1.35f
         const val SCENE_START_SCALE = 0.9f
         const val EFFECTS_START_SCALE = 1.12f
