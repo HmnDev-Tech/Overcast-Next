@@ -64,6 +64,7 @@ import androidx.compose.ui.unit.sp
 import com.sameerasw.island.sdk.HostInfo
 import com.sameerasw.island.sdk.compose.islandSnapshot
 import com.sameerasw.overcast.R
+import com.sameerasw.overcast.ui.theme.GoogleSansFlexRounded
 import com.sameerasw.overcast.data.repository.SettingsRepository
 import com.sameerasw.overcast.ui.components.WeatherIcon
 import com.sameerasw.overcast.weather.WeatherFormat
@@ -83,8 +84,8 @@ import java.text.SimpleDateFormat
 import java.util.Date
 import java.util.Locale
 
-private val body = TextStyle(color = Color.White.copy(alpha = 0.7f), fontSize = 13.sp)
-private val title = TextStyle(color = Color.White, fontSize = 16.sp, fontWeight = FontWeight.SemiBold)
+private val body = TextStyle(color = Color.White.copy(alpha = 0.7f), fontSize = 13.sp, fontFamily = GoogleSansFlexRounded)
+private val title = TextStyle(color = Color.White, fontSize = 16.sp, fontWeight = FontWeight.SemiBold, fontFamily = GoogleSansFlexRounded)
 
 @OptIn(ExperimentalMaterial3ExpressiveApi::class)
 @Composable

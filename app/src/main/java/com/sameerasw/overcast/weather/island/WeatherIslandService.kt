@@ -6,6 +6,7 @@ import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.darkColorScheme
 import androidx.compose.material3.dynamicDarkColorScheme
 import androidx.compose.runtime.Composable
+import com.sameerasw.overcast.ui.theme.Typography
 import androidx.compose.ui.platform.LocalContext
 import com.sameerasw.island.sdk.HostInfo
 import com.sameerasw.island.sdk.IslandHostHandle
@@ -77,7 +78,7 @@ class WeatherIslandService : ComposeIslandProviderService() {
     override fun ExpandedContent(itemKey: String) {
         val context = LocalContext.current
         val colors = if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.S) dynamicDarkColorScheme(context) else darkColorScheme()
-        MaterialTheme(colorScheme = colors) {
+        MaterialTheme(colorScheme = colors, typography = Typography) {
             WeatherIslandExpanded(
                 host = hostInfoState.value,
                 onOpenApp = { host?.openApp(itemKey) },
