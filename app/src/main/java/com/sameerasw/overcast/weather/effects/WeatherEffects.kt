@@ -270,22 +270,24 @@ fun WeatherEffects(
         val needsSurfaces = states.any { it.falling }
         val all = if (needsSurfaces) currentSurfaces() else emptyList()
         val settledSurfaces = if (snowState.settled) all else emptyList()
-        val cards = if (!needsSurfaces) emptyList() else if (cover === surfaces) all else currentCover()
+        val cards = if (cover !== surfaces) currentCover() else if (needsSurfaces) all else currentSurfaces()
         coverPath.rewind()
         cards.forEach { surface ->
             val r = min(surface.cornerRadius, min(surface.rect.width, surface.rect.height) / 2f)
             coverPath.addRoundRect(RoundRect(surface.rect, CornerRadius(r, r)))
         }
-        states.forEach { state ->
-            if (state.falling || state.layer is WeatherEffectLayer.Lightning) return@forEach
-            val layer = state.current()
-            val fade = strength * state.level
-            when (layer) {
-                is WeatherEffectLayer.Clouds -> drawClouds(state, t, layer.intensity, fade, fog = false)
-                is WeatherEffectLayer.Fog -> drawClouds(state, t, layer.intensity, fade, fog = true)
-                is WeatherEffectLayer.SunGlow -> drawSunGlow(state, t, layer.intensity, fade)
-                is WeatherEffectLayer.Stars -> drawStars(state.field, t, layer.intensity, fade)
-                else -> Unit
+        clipPath(coverPath, ClipOp.Difference) {
+            states.forEach { state ->
+                if (state.falling || state.layer is WeatherEffectLayer.Lightning) return@forEach
+                val layer = state.current()
+                val fade = strength * state.level
+                when (layer) {
+                    is WeatherEffectLayer.Clouds -> drawClouds(state, t, layer.intensity, fade, fog = false)
+                    is WeatherEffectLayer.Fog -> drawClouds(state, t, layer.intensity, fade, fog = true)
+                    is WeatherEffectLayer.SunGlow -> drawSunGlow(state, t, layer.intensity, fade)
+                    is WeatherEffectLayer.Stars -> drawStars(state.field, t, layer.intensity, fade)
+                    else -> Unit
+                }
             }
         }
         if (needsSurfaces) {
@@ -414,10 +416,10 @@ internal fun DrawScope.drawWeatherEffectsStill(spec: WeatherEffectSpec, strength
             is WeatherEffectLayer.Rain -> behindCards(cover) { drawRain(state, layer, STILL_TIME_S, strength, emptyList()) }
             is WeatherEffectLayer.Snow -> behindCards(cover) { drawSnow(state.field, STILL_TIME_S, layer.intensity, strength, emptyList(), snowState) }
             is WeatherEffectLayer.Hail -> behindCards(cover) { drawHail(state, layer.intensity, STILL_TIME_S, strength) }
-            is WeatherEffectLayer.Clouds -> drawClouds(state, STILL_TIME_S, layer.intensity, strength, fog = false)
-            is WeatherEffectLayer.Fog -> drawClouds(state, STILL_TIME_S, layer.intensity, strength, fog = true)
-            is WeatherEffectLayer.SunGlow -> drawSunGlow(state, STILL_TIME_S, layer.intensity, strength)
-            is WeatherEffectLayer.Stars -> drawStars(state.field, STILL_TIME_S, layer.intensity, strength)
+            is WeatherEffectLayer.Clouds -> behindCards(cover) { drawClouds(state, STILL_TIME_S, layer.intensity, strength, fog = false) }
+            is WeatherEffectLayer.Fog -> behindCards(cover) { drawClouds(state, STILL_TIME_S, layer.intensity, strength, fog = true) }
+            is WeatherEffectLayer.SunGlow -> behindCards(cover) { drawSunGlow(state, STILL_TIME_S, layer.intensity, strength) }
+            is WeatherEffectLayer.Stars -> behindCards(cover) { drawStars(state.field, STILL_TIME_S, layer.intensity, strength) }
             // A full-strength flash would wash the whole widget out, so the frozen frame is the flash at a gentle strength.
             is WeatherEffectLayer.Lightning -> drawLightning(lightningStrike(0) + 0.05f, layer.intensity, strength * 0.35f)
         }
