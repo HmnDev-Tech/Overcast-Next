@@ -289,7 +289,7 @@ class OvercastWallpaperService : WallpaperService() {
         const val EFFECT_STRENGTH = 1.7f
         const val SKY_FRACTION = 0.42f
         const val SCENE_ASPECT = 140f / 360f
-        const val SCENE_BOTTOM = 0.56f
+        const val SCENE_BOTTOM = 0.62f
         const val SCENE_ALPHA = 0.85f
         const val PARALLAX = 0.06f
         const val LOCKED_ZOOM = 0.55f

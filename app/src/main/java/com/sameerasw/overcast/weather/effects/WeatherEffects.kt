@@ -906,7 +906,7 @@ private fun DrawScope.drawStars(field: ParticleField, t: Float, intensity: Float
         val s = field.size[i]
         val magnitude = s * s * s
         val twinkle = 0.5f + 0.5f * sin(t * (1f + field.speed[i]) + field.phase[i] * TWO_PI)
-        val alpha = ((0.25f + 0.55f * magnitude) * (0.3f + 0.7f * twinkle) * fade).coerceAtMost(1f)
+        val baseAlpha = ((0.25f + 0.55f * magnitude) * (0.3f + 0.7f * twinkle) * fade).coerceAtMost(1f)
         val radius = 0.5.dp.toPx() + 0.9.dp.toPx() * magnitude
         val tone = hash(i * 977 + 11)
         val color = when {
@@ -915,6 +915,8 @@ private fun DrawScope.drawStars(field: ParticleField, t: Float, intensity: Float
             else -> Color.White
         }
         val center = Offset(field.x[i] * w, field.phase[i] * h)
+        val alpha = baseAlpha * horizonFade(center.y)
+        if (alpha <= 0.01f) continue
         if (magnitude > 0.6f) {
             val glow = radius * 3f
             drawCircle(
@@ -927,6 +929,9 @@ private fun DrawScope.drawStars(field: ParticleField, t: Float, intensity: Float
     }
     drawShootingStar(t, fade, w, h)
 }
+
+private fun DrawScope.horizonFade(y: Float): Float =
+    1f - ((y / size.height - HORIZON_FADE_START) / (HORIZON_FADE_END - HORIZON_FADE_START)).coerceIn(0f, 1f)
 
 private fun DrawScope.drawShootingStar(t: Float, fade: Float, w: Float, h: Float) {
     val cycle = floor(t / METEOR_CYCLE_S).toInt()
@@ -945,7 +950,8 @@ private fun DrawScope.drawShootingStar(t: Float, fade: Float, w: Float, h: Float
     val life = sin(local * PI.toFloat())
     val trail = w * 0.12f * life
     val tail = Offset(head.x - dx * trail, head.y - dy * trail)
-    val alpha = (0.6f * life * fade).coerceAtMost(1f)
+    val alpha = (0.6f * life * fade * horizonFade(head.y)).coerceAtMost(1f)
+    if (alpha <= 0.01f) return
     drawLine(
         Brush.linearGradient(listOf(Color.White.copy(alpha = 0f), Color.White.copy(alpha = alpha)), start = tail, end = head),
         tail,
@@ -992,6 +998,8 @@ private val SUN_COLOR = Color(0xFFFFD27A)
 private val WARM_STAR = Color(0xFFFFF1DE)
 private val COOL_STAR = Color(0xFFE3ECFF)
 private const val METEOR_CYCLE_S = 18f
+private const val HORIZON_FADE_START = 0.28f
+private const val HORIZON_FADE_END = 0.46f
 private const val METEOR_S = 0.9f
 private const val METEOR_CHANCE = 0.4f
 private val CLEAR_FADE = 32.dp

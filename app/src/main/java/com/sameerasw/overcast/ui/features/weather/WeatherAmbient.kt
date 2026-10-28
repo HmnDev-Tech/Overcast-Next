@@ -158,7 +158,7 @@ internal fun rememberLocationScene(snapshot: WeatherSnapshot?): SceneType? {
 }
 
 private const val SCENE_ALPHA = 0.85f
-private val SCENE_DROP = 90.dp
+private val SCENE_DROP = 150.dp
 
 internal fun sceneTint(palette: WeatherPalette): Color =
     if (palette.glow.luminance() < 0.03f) lerp(palette.glow, palette.accent, 0.2f) else palette.base
