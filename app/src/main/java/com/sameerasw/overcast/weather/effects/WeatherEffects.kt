@@ -37,6 +37,7 @@ import androidx.compose.ui.unit.dp
 import com.sameerasw.overcast.utils.CompatibilityMode
 import kotlin.math.PI
 import kotlin.math.abs
+import kotlin.math.cos
 import kotlin.math.floor
 import kotlin.math.min
 import kotlin.math.pow
@@ -439,7 +440,7 @@ private fun particleCount(layer: WeatherEffectLayer): Int = when (layer) {
     is WeatherEffectLayer.Rain -> (6 + 55 * layer.intensity.pow(1.3f)).toInt()
     is WeatherEffectLayer.Snow -> (20 + 60 * layer.intensity).toInt()
     is WeatherEffectLayer.Hail -> (20 + 50 * layer.intensity).toInt()
-    is WeatherEffectLayer.Stars -> (12 + 28 * layer.intensity).toInt()
+    is WeatherEffectLayer.Stars -> (50 + 90 * layer.intensity).toInt()
     is WeatherEffectLayer.Clouds, is WeatherEffectLayer.Fog -> 5
     is WeatherEffectLayer.SunGlow, is WeatherEffectLayer.Lightning -> 0
 }
@@ -896,12 +897,60 @@ private fun DrawScope.drawSunGlow(state: LayerState, t: Float, intensity: Float,
 }
 
 private fun DrawScope.drawStars(field: ParticleField, t: Float, intensity: Float, strength: Float) {
+    val fade = intensity * strength
+    val w = size.width
+    val h = size.height * 0.6f
     for (i in 0 until field.count) {
+        val s = field.size[i]
+        val magnitude = s * s * s
         val twinkle = 0.5f + 0.5f * sin(t * (1f + field.speed[i]) + field.phase[i] * TWO_PI)
-        val alpha = (0.15f + 0.45f * twinkle) * intensity * strength
-        val radius = 0.7.dp.toPx() + 0.9.dp.toPx() * field.size[i]
-        drawCircle(Color.White.copy(alpha = alpha), radius, Offset(field.x[i] * size.width, field.phase[i] * size.height * 0.6f))
+        val alpha = ((0.25f + 0.55f * magnitude) * (0.3f + 0.7f * twinkle) * fade).coerceAtMost(1f)
+        val radius = 0.5.dp.toPx() + 0.9.dp.toPx() * magnitude
+        val tone = hash(i * 977 + 11)
+        val color = when {
+            tone < 0.12f -> WARM_STAR
+            tone < 0.3f -> COOL_STAR
+            else -> Color.White
+        }
+        val center = Offset(field.x[i] * w, field.phase[i] * h)
+        if (magnitude > 0.6f) {
+            val glow = radius * 3f
+            drawCircle(
+                Brush.radialGradient(listOf(color.copy(alpha = alpha * 0.18f), Color.Transparent), center = center, radius = glow),
+                glow,
+                center,
+            )
+        }
+        drawCircle(color.copy(alpha = alpha), radius, center)
     }
+    drawShootingStar(t, fade, w, h)
+}
+
+private fun DrawScope.drawShootingStar(t: Float, fade: Float, w: Float, h: Float) {
+    val cycle = floor(t / METEOR_CYCLE_S).toInt()
+    if (hash(cycle * 31 + 7) >= METEOR_CHANCE) return
+    val startAt = cycle * METEOR_CYCLE_S + hash(cycle * 17 + 3) * (METEOR_CYCLE_S - METEOR_S)
+    val local = (t - startAt) / METEOR_S
+    if (local !in 0f..1f) return
+    val direction = if (hash(cycle * 23 + 9) < 0.5f) -1f else 1f
+    val angle = Math.toRadians(20.0 + 20.0 * hash(cycle * 29 + 4)).toFloat()
+    val dx = cos(angle) * direction
+    val dy = sin(angle)
+    val start = Offset((0.2f + 0.6f * hash(cycle * 13 + 1)) * w, (0.05f + 0.35f * hash(cycle * 19 + 5)) * h)
+    val travel = w * 0.45f
+    val eased = 1f - (1f - local) * (1f - local)
+    val head = Offset(start.x + dx * travel * eased, start.y + dy * travel * eased)
+    val life = sin(local * PI.toFloat())
+    val trail = w * 0.12f * life
+    val tail = Offset(head.x - dx * trail, head.y - dy * trail)
+    val alpha = (0.6f * life * fade).coerceAtMost(1f)
+    drawLine(
+        Brush.linearGradient(listOf(Color.White.copy(alpha = 0f), Color.White.copy(alpha = alpha)), start = tail, end = head),
+        tail,
+        head,
+        strokeWidth = 1.dp.toPx(),
+        cap = StrokeCap.Round,
+    )
 }
 
 private fun DrawScope.drawLightning(t: Float, intensity: Float, strength: Float) {
@@ -938,4 +987,9 @@ private const val SPLASH_SALT = 211
 private const val SURFACE_SALT = 307
 private const val DEPTH_SALT = 401
 private val SUN_COLOR = Color(0xFFFFD27A)
+private val WARM_STAR = Color(0xFFFFF1DE)
+private val COOL_STAR = Color(0xFFE3ECFF)
+private const val METEOR_CYCLE_S = 18f
+private const val METEOR_S = 0.9f
+private const val METEOR_CHANCE = 0.4f
 private val CLEAR_FADE = 32.dp
