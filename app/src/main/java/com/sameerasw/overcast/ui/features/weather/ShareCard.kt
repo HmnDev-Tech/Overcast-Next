@@ -444,7 +444,7 @@ private fun ShareCardContent(moment: ShareMoment, units: WeatherUnits, scene: Sc
                 colorFilter = ColorFilter.tint(sceneTint(palette)),
                 modifier = Modifier
                     .align(Alignment.BottomCenter)
-                    .padding(bottom = 150.dp)
+                    .padding(bottom = 110.dp)
                     .fillMaxWidth()
                     .graphicsLayer {
                         alpha = 0.85f

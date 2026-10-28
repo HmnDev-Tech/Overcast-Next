@@ -1,6 +1,8 @@
 package com.sameerasw.overcast.weather.scene
 
 import android.content.Context
+import com.sameerasw.overcast.data.repository.SettingsRepository
+import com.sameerasw.overcast.weather.WeatherRepository
 import com.sameerasw.overcast.weather.provider.ProviderHttp
 import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.async
@@ -21,6 +23,14 @@ object SceneRepository {
     private const val GRID_STEP_KM = 4.0
     private const val BIG_CITY = 300_000L
     private const val TOWN = 50_000L
+
+    suspend fun current(context: Context, placeName: String): SceneType? {
+        val settings = SettingsRepository(context)
+        if (!settings.isLocationSceneEnabled()) return null
+        settings.getSimulatedScene()?.let { id -> SceneType.entries.firstOrNull { it.name == id }?.let { return it } }
+        val location = WeatherRepository.lastKnownLocation(context) ?: return null
+        return sceneFor(context, location.latitude, location.longitude, placeName)
+    }
 
     suspend fun sceneFor(context: Context, latitude: Double, longitude: Double, placeName: String): SceneType? {
         val lat = String.format(Locale.US, "%.2f", latitude).toDouble()

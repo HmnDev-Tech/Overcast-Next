@@ -17,7 +17,10 @@ import java.util.concurrent.TimeUnit
 class WeatherRefreshWorker(context: Context, params: WorkerParameters) : CoroutineWorker(context, params) {
     override suspend fun doWork(): Result {
         WeatherRepository.refresh(applicationContext)
-        WeatherRepository.state.value.snapshot?.let { WeatherNotifications.checkRainSoon(applicationContext, it) }
+        WeatherRepository.state.value.snapshot?.let {
+            WeatherNotifications.checkRainSoon(applicationContext, it)
+            WeatherNotifications.checkSkyEvents(applicationContext, it)
+        }
         return Result.success()
     }
 }

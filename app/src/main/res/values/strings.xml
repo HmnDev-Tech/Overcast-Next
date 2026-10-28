@@ -158,6 +158,10 @@
     <string name="weather_place_remove_recent">Remove</string>
     <string name="weather_choose_location">Choose a location</string>
     <string name="share_action">Share</string>
+    <string name="wallpaper_set">Live wallpaper</string>
+    <string name="wallpaper_smooth">Smooth animations</string>
+    <string name="wallpaper_effects">Show weather effects</string>
+    <string name="wallpaper_description">Live weather for where you are</string>
     <string name="sky_now">Now</string>
     <string name="sky_events_title">Sky events</string>
     <string name="sky_meteor_shower">%1$s meteor shower</string>
@@ -350,6 +354,14 @@
     <string name="notify_summary_title">Today in %1$s</string>
     <string name="notify_rain_title">Rain soon</string>
     <string name="notify_rain_from">Rain from %1$s</string>
+    <string name="notify_sky_alert">Sky events</string>
+    <string name="notify_channel_sky">Sky events</string>
+    <string name="notify_sky_peaks">Peaks tonight around %1$s</string>
+    <string name="notify_sky_clear">Skies look clear</string>
+    <string name="notify_sky_cloudy">Clouds may get in the way</string>
+    <string name="notify_sky_aurora">%1$s expected. Look toward the pole after dark</string>
+    <string name="notify_sky_snow">Snow expected around %1$s</string>
+    <string name="notify_sky_today">Today</string>
     <string name="onboarding_perm_notifications_title">Notifications</string>
     <string name="onboarding_perm_notifications_usage">Optional. For a morning summary and a heads-up before rain.</string>
     <string name="nowcast_none">No rain expected in the next 2 hours</string>

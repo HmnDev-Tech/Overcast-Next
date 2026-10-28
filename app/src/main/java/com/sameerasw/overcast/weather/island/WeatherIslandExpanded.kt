@@ -5,6 +5,22 @@ import android.graphics.Bitmap
 import android.text.format.DateFormat
 import android.text.format.DateUtils
 import androidx.compose.foundation.background
+import androidx.compose.foundation.Canvas
+import androidx.compose.foundation.Image
+import androidx.compose.ui.draw.drawWithContent
+import androidx.compose.ui.graphics.BlendMode
+import androidx.compose.ui.graphics.Brush
+import androidx.compose.ui.graphics.ColorFilter
+import androidx.compose.ui.graphics.CompositingStrategy
+import androidx.compose.ui.graphics.graphicsLayer
+import androidx.compose.ui.layout.ContentScale
+import androidx.compose.ui.unit.Dp
+import com.sameerasw.overcast.ui.features.weather.WeatherPalette
+import com.sameerasw.overcast.ui.features.weather.drawSkyBody
+import com.sameerasw.overcast.ui.features.weather.drawableRes
+import com.sameerasw.overcast.ui.features.weather.rememberLocationScene
+import com.sameerasw.overcast.ui.features.weather.rememberMinuteClock
+import com.sameerasw.overcast.ui.features.weather.sceneTint
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
@@ -48,6 +64,7 @@ import androidx.compose.ui.unit.sp
 import com.sameerasw.island.sdk.HostInfo
 import com.sameerasw.island.sdk.compose.islandSnapshot
 import com.sameerasw.overcast.R
+import com.sameerasw.overcast.ui.theme.GoogleSansFlexRounded
 import com.sameerasw.overcast.data.repository.SettingsRepository
 import com.sameerasw.overcast.ui.components.WeatherIcon
 import com.sameerasw.overcast.weather.WeatherFormat
@@ -67,8 +84,8 @@ import java.text.SimpleDateFormat
 import java.util.Date
 import java.util.Locale
 
-private val body = TextStyle(color = Color.White.copy(alpha = 0.7f), fontSize = 13.sp)
-private val title = TextStyle(color = Color.White, fontSize = 16.sp, fontWeight = FontWeight.SemiBold)
+private val body = TextStyle(color = Color.White.copy(alpha = 0.7f), fontSize = 13.sp, fontFamily = GoogleSansFlexRounded)
+private val title = TextStyle(color = Color.White, fontSize = 16.sp, fontWeight = FontWeight.SemiBold, fontFamily = GoogleSansFlexRounded)
 
 @OptIn(ExperimentalMaterial3ExpressiveApi::class)
 @Composable
@@ -106,6 +123,7 @@ fun WeatherIslandExpanded(
             .background(Color.Black)
             .clickable(onClick = onOpenApp),
     ) {
+        snapshot?.let { IslandSky(it, clearTop, Modifier.matchParentSize()) }
         WeatherEffects(
             spec = effectSpec,
             modifier = Modifier.matchParentSize(),
@@ -161,6 +179,63 @@ fun WeatherIslandExpanded(
         }
     }
 }
+
+@Composable
+private fun IslandSky(snapshot: WeatherSnapshot, clearTop: Dp, modifier: Modifier) {
+    val now by rememberMinuteClock()
+    val palette = remember(snapshot, now / 60_000L) { WeatherPalette.from(snapshot, now) }
+    val scene = rememberLocationScene(snapshot)
+    Box(modifier) {
+        Box(
+            Modifier
+                .matchParentSize()
+                .graphicsLayer { compositingStrategy = CompositingStrategy.Offscreen }
+                .drawWithContent {
+                    drawContent()
+                    val start = clearTop.toPx() * 0.5f
+                    val end = clearTop.toPx() + SKY_TOP_FADE.toPx()
+                    drawRect(
+                        Brush.verticalGradient(
+                            0f to Color.Transparent,
+                            0.25f to Color.Black.copy(alpha = 0.08f),
+                            0.5f to Color.Black.copy(alpha = 0.3f),
+                            0.75f to Color.Black.copy(alpha = 0.68f),
+                            1f to Color.Black,
+                            startY = start,
+                            endY = end,
+                        ),
+                        blendMode = BlendMode.DstIn,
+                    )
+                },
+        ) {
+            Canvas(Modifier.matchParentSize()) {
+                drawRect(Brush.verticalGradient(0f to palette.glow, 0.55f to palette.glowSecondary, 1f to palette.base))
+            }
+        }
+        Canvas(Modifier.matchParentSize()) { drawSkyBody(snapshot, now) }
+        if (scene != null) {
+            Image(
+                painter = painterResource(scene.drawableRes),
+                contentDescription = null,
+                contentScale = ContentScale.FillWidth,
+                colorFilter = ColorFilter.tint(sceneTint(palette)),
+                modifier = Modifier
+                    .align(Alignment.BottomCenter)
+                    .fillMaxWidth()
+                    .graphicsLayer {
+                        alpha = 0.7f
+                        compositingStrategy = CompositingStrategy.Offscreen
+                    }
+                    .drawWithContent {
+                        drawContent()
+                        drawRect(Brush.verticalGradient(0.4f to Color.Black, 1f to Color.Transparent), blendMode = BlendMode.DstIn)
+                    },
+            )
+        }
+    }
+}
+
+private val SKY_TOP_FADE = 140.dp
 
 @Composable
 private fun Summary(snapshot: WeatherSnapshot, units: WeatherUnits) {

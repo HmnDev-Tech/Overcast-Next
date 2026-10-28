@@ -9,6 +9,9 @@
 
 package com.sameerasw.overcast.ui.features.weather
 
+import android.app.WallpaperManager
+import android.content.ComponentName
+import com.sameerasw.overcast.weather.wallpaper.OvercastWallpaperService
 import android.Manifest
 import android.os.Build
 import android.text.format.DateFormat
@@ -599,6 +602,7 @@ fun WeatherSettingsUI(
                 var summary by remember { mutableStateOf(settings.isMorningSummaryEnabled() && WeatherNotifications.canPost(context)) }
                 var summaryHour by remember { mutableIntStateOf(settings.getMorningSummaryHour()) }
                 var rainAlerts by remember { mutableStateOf(settings.isRainAlertEnabled() && WeatherNotifications.canPost(context)) }
+                var skyAlerts by remember { mutableStateOf(settings.isSkyAlertEnabled() && WeatherNotifications.canPost(context)) }
                 var pendingToggle by remember { mutableStateOf<((Boolean) -> Unit)?>(null) }
                 val notificationLauncher = rememberLauncherForActivityResult(ActivityResultContracts.RequestPermission()) { granted ->
                     pendingToggle?.invoke(granted)
@@ -658,10 +662,57 @@ fun WeatherSettingsUI(
                         if (checked) withPermission(apply) else apply(true)
                     },
                 )
+                IconToggleItem(
+                    iconRes = R.drawable.rounded_auto_awesome_24,
+                    title = stringResource(R.string.notify_sky_alert),
+                    isChecked = skyAlerts,
+                    onCheckedChange = { checked ->
+                        HapticUtil.performVirtualKeyHaptic(view)
+                        val apply: (Boolean) -> Unit = { allowed ->
+                            skyAlerts = checked && allowed
+                            settings.setSkyAlertEnabled(skyAlerts)
+                        }
+                        if (checked) withPermission(apply) else apply(true)
+                    },
+                )
             }
 
             SectionTitle(R.string.weather_section_screensaver)
             RoundedCardContainer(spacing = 2.dp, cornerRadius = 24.dp) {
+                IconToggleItem(
+                    iconRes = R.drawable.rounded_landscape_24,
+                    title = stringResource(R.string.wallpaper_set),
+                    showToggle = false,
+                    onClick = {
+                        HapticUtil.performVirtualKeyHaptic(view)
+                        val preview = Intent(WallpaperManager.ACTION_CHANGE_LIVE_WALLPAPER)
+                            .putExtra(WallpaperManager.EXTRA_LIVE_WALLPAPER_COMPONENT, ComponentName(context, OvercastWallpaperService::class.java))
+                        runCatching { context.startActivity(preview) }
+                            .onFailure { runCatching { context.startActivity(Intent(WallpaperManager.ACTION_LIVE_WALLPAPER_CHOOSER)) } }
+                    },
+                )
+                var wallpaperEffects by remember { mutableStateOf(settings.isWallpaperEffectsEnabled()) }
+                IconToggleItem(
+                    iconRes = R.drawable.rounded_rainy_24,
+                    title = stringResource(R.string.wallpaper_effects),
+                    isChecked = wallpaperEffects,
+                    onCheckedChange = {
+                        HapticUtil.performVirtualKeyHaptic(view)
+                        wallpaperEffects = it
+                        settings.setWallpaperEffectsEnabled(it)
+                    },
+                )
+                var wallpaperSmooth by remember { mutableStateOf(settings.isWallpaperSmoothEnabled()) }
+                IconToggleItem(
+                    iconRes = R.drawable.rounded_speed_24,
+                    title = stringResource(R.string.wallpaper_smooth),
+                    isChecked = wallpaperSmooth,
+                    onCheckedChange = {
+                        HapticUtil.performVirtualKeyHaptic(view)
+                        wallpaperSmooth = it
+                        settings.setWallpaperSmoothEnabled(it)
+                    },
+                )
                 IconToggleItem(
                     iconRes = R.drawable.rounded_dashboard_24,
                     title = stringResource(R.string.screensaver_show_forecast),
