@@ -593,7 +593,7 @@ fun WeatherScreen(onOpenSettings: () -> Unit = {}) {
                                         snapshot.upcomingDays().takeIf { it.isNotEmpty() }
                                             ?.let { DailySection(it, units, palette, Modifier.padding(horizontal = SIDE_PADDING)) }
                                         if (MainSection.DETAILS in visibleSections) DetailsSection(snapshot, units, palette, Modifier.padding(horizontal = SIDE_PADDING))
-                                        if (MainSection.ACTIVITIES in visibleSections) ActivitySection(snapshot, palette, Modifier.padding(horizontal = SIDE_PADDING))
+                                        if (MainSection.ACTIVITIES in visibleSections) ActivitySection(snapshot, units, palette, Modifier.padding(horizontal = SIDE_PADDING))
                                         if (MainSection.INSIGHTS in visibleSections) InsightsSection(state.snapshot ?: snapshot, units, palette, Modifier.padding(horizontal = SIDE_PADDING))
                                         if (MainSection.RADAR in visibleSections) RadarSection(state.snapshot ?: snapshot, units, palette, Modifier.padding(horizontal = SIDE_PADDING))
                                         if (MainSection.AIR_QUALITY in visibleSections) AqiSection(state.snapshot ?: snapshot, palette, Modifier.padding(horizontal = SIDE_PADDING))
@@ -653,7 +653,7 @@ fun WeatherScreen(onOpenSettings: () -> Unit = {}) {
                                                 when (section) {
                                                     MainSection.SUN -> SunSection(snapshot, palette, sectionModifier)
                                                     MainSection.HISTORY -> HistorySection(live, units, palette, sectionModifier)
-                                                    MainSection.ACTIVITIES -> ActivitySection(snapshot, palette, sectionModifier)
+                                                    MainSection.ACTIVITIES -> ActivitySection(snapshot, units, palette, sectionModifier)
                                                     MainSection.INSIGHTS -> InsightsSection(live, units, palette, sectionModifier)
                                                     MainSection.RADAR -> RadarSection(live, units, palette, sectionModifier)
                                                     MainSection.AIR_QUALITY -> AqiSection(live, palette, sectionModifier)
