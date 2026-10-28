@@ -1,19 +1,5 @@
 package com.sameerasw.overcast.ui.features.weather
 
-import android.hardware.Sensor
-import android.hardware.SensorEvent
-import android.hardware.SensorEventListener
-import android.hardware.SensorManager
-import androidx.compose.foundation.clickable
-import androidx.compose.foundation.shape.CircleShape
-import androidx.compose.runtime.DisposableEffect
-import androidx.compose.runtime.State
-import androidx.compose.runtime.mutableFloatStateOf
-import androidx.compose.runtime.saveable.rememberSaveable
-import androidx.compose.ui.draw.clip
-import androidx.compose.ui.platform.LocalView
-import androidx.compose.ui.text.font.FontWeight
-import com.sameerasw.overcast.utils.HapticUtil
 import androidx.compose.foundation.Canvas
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Column
@@ -37,7 +23,6 @@ import androidx.compose.ui.geometry.Size
 import androidx.compose.ui.graphics.Path
 import androidx.compose.ui.graphics.StrokeCap
 import androidx.compose.ui.graphics.drawscope.Stroke
-import androidx.compose.ui.graphics.drawscope.rotate
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.res.painterResource
 import androidx.compose.ui.res.stringResource
@@ -58,8 +43,6 @@ import com.sameerasw.overcast.weather.WeatherFormat
 import com.sameerasw.overcast.weather.WeatherUnits
 import com.sameerasw.overcast.weather.model.WeatherSnapshot
 import java.util.Calendar
-import kotlin.math.cos
-import kotlin.math.sin
 
 private const val TREND_HOURS = 24
 
@@ -161,111 +144,6 @@ fun TrendSection(snapshot: WeatherSnapshot, units: WeatherUnits, palette: Weathe
                     layout,
                     topLeft = Offset((index * step - layout.size.width / 2f).coerceIn(0f, size.width - layout.size.width), size.height - layout.size.height),
                 )
-            }
-        }
-    }
-}
-
-@Composable
-private fun rememberCompassHeading(active: Boolean): State<Float> {
-    val context = LocalContext.current
-    val heading = remember { mutableFloatStateOf(0f) }
-    DisposableEffect(active) {
-        val manager = context.getSystemService(SensorManager::class.java)
-        val sensor = manager?.getDefaultSensor(Sensor.TYPE_ROTATION_VECTOR)
-        if (!active || manager == null || sensor == null) return@DisposableEffect onDispose {}
-        val matrix = FloatArray(9)
-        val orientation = FloatArray(3)
-        val listener = object : SensorEventListener {
-            override fun onSensorChanged(event: SensorEvent) {
-                SensorManager.getRotationMatrixFromVector(matrix, event.values)
-                SensorManager.getOrientation(matrix, orientation)
-                val azimuth = Math.toDegrees(orientation[0].toDouble()).toFloat()
-                // Low-pass along the shortest arc so the dial doesn't spin the long way round at north.
-                val delta = ((azimuth - heading.floatValue + 540f) % 360f) - 180f
-                heading.floatValue = (heading.floatValue + delta * 0.15f + 360f) % 360f
-            }
-
-            override fun onAccuracyChanged(sensor: Sensor?, accuracy: Int) = Unit
-        }
-        manager.registerListener(listener, sensor, SensorManager.SENSOR_DELAY_UI)
-        onDispose { manager.unregisterListener(listener) }
-    }
-    return heading
-}
-
-@Composable
-fun WindSection(snapshot: WeatherSnapshot, units: WeatherUnits, palette: WeatherPalette, modifier: Modifier = Modifier) {
-    val direction = snapshot.extras?.windDirectionDeg ?: return
-    val gust = snapshot.extras?.windGustKph
-    val view = LocalView.current
-    val measurer = rememberTextMeasurer()
-    val northStyle = MaterialTheme.typography.labelLarge.copy(color = palette.accent, fontWeight = FontWeight.Bold)
-    var live by rememberSaveable { mutableStateOf(false) }
-    var frozenHeading by rememberSaveable { mutableFloatStateOf(0f) }
-    val heading by rememberCompassHeading(live)
-    val dialRotation = -(if (live) heading else frozenHeading)
-    WeatherCard("wind", R.drawable.rounded_explore_24, stringResource(R.string.weather_detail_wind), palette, modifier) {
-        Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(24.dp)) {
-            Canvas(
-                Modifier
-                    .size(132.dp)
-                    .clip(CircleShape)
-                    .clickable {
-                        HapticUtil.performVirtualKeyHaptic(view)
-                        if (live) frozenHeading = heading
-                        live = !live
-                    },
-            ) {
-                val radius = size.minDimension / 2f
-                drawCircle(
-                    if (live) palette.accent.copy(alpha = 0.6f) else palette.onBaseMuted.copy(alpha = 0.18f),
-                    radius = radius - 2.dp.toPx(),
-                    style = Stroke(2.dp.toPx()),
-                )
-                rotate(dialRotation) {
-                    for (tick in 0 until 72) {
-                        val angle = Math.toRadians(tick * 5.0 - 90)
-                        val major = tick % 18 == 0
-                        val inner = radius - (if (major) 12.dp else 7.dp).toPx()
-                        val outer = radius - 4.dp.toPx()
-                        drawLine(
-                            palette.onBaseMuted.copy(alpha = if (major) 0.8f else 0.3f),
-                            Offset(center.x + inner * cos(angle).toFloat(), center.y + inner * sin(angle).toFloat()),
-                            Offset(center.x + outer * cos(angle).toFloat(), center.y + outer * sin(angle).toFloat()),
-                            strokeWidth = 1.5.dp.toPx(),
-                        )
-                    }
-                    val north = measurer.measure("N", northStyle)
-                    drawText(north, topLeft = Offset(center.x - north.size.width / 2f, center.y - radius + 16.dp.toPx()))
-                    // Meteorological direction is where the wind comes from; the arrow shows where it's heading.
-                    rotate(direction.toFloat() + 180f) {
-                        val tip = Offset(center.x, center.y - radius + 36.dp.toPx())
-                        val tail = Offset(center.x, center.y + radius - 36.dp.toPx())
-                        drawLine(palette.accent, tail, tip, strokeWidth = 3.dp.toPx(), cap = StrokeCap.Round)
-                        val head = Path().apply {
-                            moveTo(tip.x, tip.y - 6.dp.toPx())
-                            lineTo(tip.x - 8.dp.toPx(), tip.y + 8.dp.toPx())
-                            lineTo(tip.x + 8.dp.toPx(), tip.y + 8.dp.toPx())
-                            close()
-                        }
-                        drawPath(head, palette.accent)
-                        drawCircle(palette.accent, radius = 5.dp.toPx(), center = tail)
-                    }
-                }
-            }
-            Column(verticalArrangement = Arrangement.spacedBy(12.dp)) {
-                Column {
-                    Text(stringResource(R.string.weather_detail_wind), color = palette.onBaseMuted, style = MaterialTheme.typography.labelMedium)
-                    Text(WeatherFormat.wind(snapshot.windKph, units.wind), color = palette.onBase, style = MaterialTheme.typography.headlineSmall)
-                    Text(compass(direction), color = palette.onBaseMuted, style = MaterialTheme.typography.bodyMedium)
-                }
-                gust?.let {
-                    Column {
-                        Text(stringResource(R.string.weather_detail_gusts), color = palette.onBaseMuted, style = MaterialTheme.typography.labelMedium)
-                        Text(WeatherFormat.wind(it, units.wind), color = palette.onBase, style = MaterialTheme.typography.titleLarge)
-                    }
-                }
             }
         }
     }

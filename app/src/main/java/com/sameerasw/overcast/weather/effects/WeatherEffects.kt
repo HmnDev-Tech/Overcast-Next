@@ -54,6 +54,9 @@ interface WeatherEffectHaptics {
 object EffectQuality {
     var level by mutableIntStateOf(2)
 
+    // High refresh panels would otherwise redraw the full-screen effects twice as often as they need.
+    const val MIN_FRAME_NS = 9_000_000L
+
     val glassEnabled: Boolean get() = level >= 1
     val blurEnabled: Boolean get() = level >= 1
 
@@ -208,8 +211,11 @@ fun WeatherEffects(
         var windowStart = start
         var windowFrames = 0
         var slowWindows = 0
+        var lastTick = currentScrollTick()
         while (true) {
             val frame = withFrameNanos { it }
+            val scrolling = currentScrollTick() != lastTick
+            if (!scrolling && frame - previousFrame < EffectQuality.MIN_FRAME_NS) continue
             val now = (frame - start) / 1_000_000_000f
             val dt = ((frame - previousFrame) / 1_000_000_000f).coerceIn(0f, 0.1f)
             previousFrame = frame
@@ -236,6 +242,7 @@ fun WeatherEffects(
             val needsSurfaces = states.any { it.falling }
             val all = if (needsSurfaces) currentSurfaces() else emptyList()
             val tick = currentScrollTick()
+            lastTick = tick
             if (tick != snowState.tick) {
                 snowState.tick = tick
                 snowState.lastMove = now

@@ -5,6 +5,8 @@ import com.sameerasw.overcast.data.repository.SettingsRepository
 import com.sameerasw.overcast.weather.WeatherRepository
 import com.sameerasw.overcast.weather.provider.ProviderHttp
 import com.sameerasw.overcast.weather.provider.WeatherProviderException
+import java.time.LocalDate
+import java.time.ZoneOffset
 import kotlin.math.PI
 import kotlin.math.cos
 import kotlin.math.floor
@@ -40,6 +42,11 @@ data class RadarMap(
     val frames: List<RadarFrame>,
     val centerX: Float,
     val centerY: Float,
+    val zoom: Int = 0,
+    val originTileX: Int = 0,
+    val originTileY: Int = 0,
+    val gridTiles: Int = 0,
+    val satelliteTiles: List<MapTile> = emptyList(),
 )
 
 class RadarException(val reason: Reason, message: String? = null) : Exception(message) {
@@ -57,6 +64,7 @@ object RadarRepository {
     private const val GRID = 1
     private const val BASE_ZOOM_STEP = 1
     private const val LOOP_FRAMES = 6
+    private const val EXTRA_ROWS = 1
 
     private val _status = MutableStateFlow<RadarStatus?>(null)
     val status: StateFlow<RadarStatus?> = _status.asStateFlow()
@@ -72,9 +80,11 @@ object RadarRepository {
         throw e
     }
 
-    private suspend fun load(context: Context): RadarMap {
+    suspend fun baseMap(context: Context): RadarMap = load(context, withRadar = false)
+
+    private suspend fun load(context: Context, withRadar: Boolean = true): RadarMap {
         val settings = SettingsRepository(context)
-        val provider = RadarProviders.resolve(settings.getRadarProvider())
+        val provider = if (withRadar) RadarProviders.resolve(settings.getRadarProvider()) else RadarProviders.OFF_ID
         val loc = WeatherRepository.lastKnownLocation(context) ?: throw RadarException(RadarException.Reason.NO_LOCATION)
         val n = 1 shl ZOOM
         val x = (loc.longitude + 180.0) / 360.0 * n
@@ -108,10 +118,10 @@ object RadarRepository {
                 frameUrls = listOf(null to url)
             }
 
-            else -> throw RadarException(RadarException.Reason.BAD_RESPONSE)
+            else -> frameUrls = emptyList()
         }
 
-        fetch(frameUrls.last().second(Math.floorMod(tileX, n), tileY.coerceIn(0, n - 1)))
+        frameUrls.lastOrNull()?.let { fetch(it.second(Math.floorMod(tileX, n), tileY.coerceIn(0, n - 1))) }
 
         val frames = frameUrls.map { (time, overlay) ->
             RadarFrame(
@@ -128,15 +138,33 @@ object RadarRepository {
         val split = 1 shl BASE_ZOOM_STEP
         val baseN = n * split
         val baseSize = 1f / split
+        val satelliteDate = LocalDate.now(ZoneOffset.UTC).minusDays(1)
+        val satelliteTiles = mutableListOf<MapTile>()
         val baseTiles = buildList {
-            for (by in 0 until (GRID * 2 + 1) * split) for (bx in 0 until (GRID * 2 + 1) * split) {
+            for (by in -EXTRA_ROWS * split until (GRID * 2 + 1 + EXTRA_ROWS) * split) for (bx in 0 until (GRID * 2 + 1) * split) {
                 val ty = (tileY - GRID) * split + by
                 if (ty !in 0 until baseN) continue
                 val tx = Math.floorMod((tileX - GRID) * split + bx, baseN)
                 add(MapTile("https://tile.openstreetmap.org/${ZOOM + BASE_ZOOM_STEP}/$tx/$ty.png", bx * baseSize, by * baseSize, baseSize))
+                satelliteTiles += MapTile(
+                    "https://gibs.earthdata.nasa.gov/wmts/epsg3857/best/VIIRS_NOAA20_CorrectedReflectance_TrueColor/default/$satelliteDate/GoogleMapsCompatible_Level9/${ZOOM + BASE_ZOOM_STEP}/$ty/$tx.jpg",
+                    bx * baseSize,
+                    by * baseSize,
+                    baseSize,
+                )
             }
         }
-        return RadarMap(baseTiles, frames, GRID + (x - tileX).toFloat(), GRID + (y - tileY).toFloat())
+        return RadarMap(
+            baseTiles,
+            frames,
+            GRID + (x - tileX).toFloat(),
+            GRID + (y - tileY).toFloat(),
+            ZOOM,
+            tileX - GRID,
+            tileY - GRID,
+            GRID * 2 + 1,
+            satelliteTiles,
+        )
     }
 
     private suspend fun fetch(url: String): String = try {

@@ -28,6 +28,10 @@ import com.sameerasw.overcast.utils.HapticUtil
 import com.sameerasw.overcast.weather.WeatherRepository
 import com.sameerasw.overcast.weather.effects.WeatherSimulation
 import com.sameerasw.overcast.weather.notify.WeatherNotifications
+import com.sameerasw.overcast.weather.scene.SceneType
+
+private val SceneType.label: String
+    get() = name.lowercase().split('_').joinToString(" ") { it.replaceFirstChar(Char::uppercase) }
 
 @Composable
 fun WeatherExperimentsUI(modifier: Modifier = Modifier) {
@@ -37,6 +41,7 @@ fun WeatherExperimentsUI(modifier: Modifier = Modifier) {
     var simulatedWeather by remember { mutableStateOf(settings.getString(SettingsRepository.KEY_DEBUG_SIMULATED_WEATHER, WeatherSimulation.OFF) ?: WeatherSimulation.OFF) }
     var simulatedAlert by remember { mutableStateOf(settings.getString(SettingsRepository.KEY_DEBUG_SIMULATED_ALERT, WeatherSimulation.OFF) ?: WeatherSimulation.OFF) }
     var simulatedTime by remember { mutableStateOf(settings.getString(SettingsRepository.KEY_DEBUG_SIMULATED_TIME, "auto") ?: "auto") }
+    var simulatedScene by remember { mutableStateOf(settings.getString(SettingsRepository.KEY_DEBUG_SIMULATED_SCENE, "auto") ?: "auto") }
     var simulatedTemp by remember { mutableStateOf(settings.getString(SettingsRepository.KEY_DEBUG_SIMULATED_TEMP, "auto") ?: "auto") }
 
     RoundedCardContainer(modifier = modifier, spacing = 2.dp, cornerRadius = 24.dp) {
@@ -94,6 +99,23 @@ fun WeatherExperimentsUI(modifier: Modifier = Modifier) {
             },
             modifier = Modifier.fillMaxWidth(),
         )
+        ConfigPickerItem(
+            title = stringResource(R.string.dev_simulate_location_title),
+            iconRes = R.drawable.rounded_landscape_24,
+            selectedValue = SceneType.entries.firstOrNull { it.name == simulatedScene }?.label ?: stringResource(R.string.weather_sim_time_auto),
+            modifier = Modifier.fillMaxWidth(),
+        ) {
+            (listOf("auto") + SceneType.entries.map { it.name }).forEach { id ->
+                SegmentedDropdownMenuItem(
+                    text = { Text(SceneType.entries.firstOrNull { it.name == id }?.label ?: stringResource(R.string.weather_sim_time_auto)) },
+                    onClick = {
+                        HapticUtil.performVirtualKeyHaptic(view)
+                        simulatedScene = id
+                        settings.putString(SettingsRepository.KEY_DEBUG_SIMULATED_SCENE, id)
+                    },
+                )
+            }
+        }
         SegmentedPicker(
             items = listOf("auto", "-15", "5", "22", "38", "50"),
             selectedItem = simulatedTemp,

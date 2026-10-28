@@ -20,6 +20,10 @@ import android.content.ClipboardManager
 import android.content.Context
 import android.content.Intent
 import android.net.Uri
+import androidx.compose.runtime.DisposableEffect
+import android.provider.Settings
+import android.view.ViewTreeObserver
+import com.sameerasw.overcast.weather.location.DeviceLocationSource
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.animation.AnimatedVisibility
 import androidx.compose.foundation.layout.Column
@@ -119,8 +123,10 @@ fun WeatherSettingsUI(
     var unitsExpanded by remember { mutableStateOf(false) }
     var showCompatibilityInfo by remember { mutableStateOf(false) }
     var showLocations by remember { mutableStateOf(false) }
+    var showPreciseInfo by remember { mutableStateOf(false) }
     var showSections by remember { mutableStateOf(false) }
     var effects by remember { mutableStateOf(settings.isWeatherEffectsEnabled()) }
+    var locationScene by remember { mutableStateOf(settings.isLocationSceneEnabled()) }
     var weatherHaptics by remember { mutableStateOf(settings.isWeatherHapticsEnabled()) }
     var refreshMinutes by remember { mutableIntStateOf(settings.getWeatherRefreshMinutes()) }
     var savedKey by remember { mutableStateOf(settings.getWeatherApiKey(providerId).orEmpty()) }
@@ -151,6 +157,43 @@ fun WeatherSettingsUI(
                     trailingContent = {
                         Text(
                             text = locationLabel ?: stringResource(R.string.weather_location_device),
+                            style = MaterialTheme.typography.labelLarge,
+                            color = MaterialTheme.colorScheme.primary,
+                        )
+                    },
+                )
+                var precise by remember { mutableStateOf(DeviceLocationSource.hasPrecisePermission(context)) }
+                var askedPrecise by remember { mutableStateOf(false) }
+                DisposableEffect(view) {
+                    val listener = ViewTreeObserver.OnWindowFocusChangeListener { focused ->
+                        if (focused) precise = DeviceLocationSource.hasPrecisePermission(context)
+                    }
+                    view.viewTreeObserver.addOnWindowFocusChangeListener(listener)
+                    onDispose { view.viewTreeObserver.removeOnWindowFocusChangeListener(listener) }
+                }
+                val preciseLauncher = rememberLauncherForActivityResult(ActivityResultContracts.RequestMultiplePermissions()) { result ->
+                    val granted = result[Manifest.permission.ACCESS_FINE_LOCATION] == true
+                    precise = granted
+                    if (granted) refreshNow()
+                    if (!granted && askedPrecise) openAppSettings(context)
+                    askedPrecise = true
+                }
+                IconToggleItem(
+                    iconRes = R.drawable.rounded_my_location_24,
+                    title = stringResource(R.string.precise_location_title),
+                    showToggle = false,
+                    onInfoClick = { showPreciseInfo = true },
+                    onClick = {
+                        HapticUtil.performVirtualKeyHaptic(view)
+                        if (precise) {
+                            openAppSettings(context)
+                        } else {
+                            preciseLauncher.launch(arrayOf(Manifest.permission.ACCESS_FINE_LOCATION, Manifest.permission.ACCESS_COARSE_LOCATION))
+                        }
+                    },
+                    trailingContent = {
+                        Text(
+                            text = stringResource(if (precise) R.string.precise_location_on else R.string.precise_location_off),
                             style = MaterialTheme.typography.labelLarge,
                             color = MaterialTheme.colorScheme.primary,
                         )
@@ -501,6 +544,16 @@ fun WeatherSettingsUI(
                     },
                 )
                 IconToggleItem(
+                    iconRes = R.drawable.rounded_landscape_24,
+                    title = stringResource(R.string.location_visualization_title),
+                    isChecked = locationScene,
+                    onCheckedChange = {
+                        HapticUtil.performVirtualKeyHaptic(view)
+                        locationScene = it
+                        settings.setLocationSceneEnabled(it)
+                    },
+                )
+                IconToggleItem(
                     iconRes = R.drawable.rounded_vibration_24,
                     title = stringResource(R.string.weather_haptics_title),
                     isChecked = weatherHaptics,
@@ -645,6 +698,9 @@ fun WeatherSettingsUI(
     if (showCompatibilityInfo) {
         CompatibilityInfoSheet(onDismiss = { showCompatibilityInfo = false })
     }
+    if (showPreciseInfo) {
+        InfoSheet(R.string.precise_location_title, R.string.precise_location_info, onDismiss = { showPreciseInfo = false })
+    }
     if (showSections) {
         SectionsSheet(settings, onDismiss = { showSections = false })
     }
@@ -683,19 +739,29 @@ private fun SectionsSheet(settings: SettingsRepository, onDismiss: () -> Unit) {
     }
 }
 
+private fun openAppSettings(context: Context) {
+    context.startActivity(
+        Intent(Settings.ACTION_APPLICATION_DETAILS_SETTINGS, Uri.fromParts("package", context.packageName, null))
+            .addFlags(Intent.FLAG_ACTIVITY_NEW_TASK),
+    )
+}
+
 @Composable
-private fun CompatibilityInfoSheet(onDismiss: () -> Unit) {
+private fun CompatibilityInfoSheet(onDismiss: () -> Unit) = InfoSheet(R.string.compatibility_mode_title, R.string.compatibility_info, onDismiss)
+
+@Composable
+private fun InfoSheet(titleRes: Int, bodyRes: Int, onDismiss: () -> Unit) {
     OvercastBottomSheet(onDismissRequest = onDismiss) {
         Column(
             modifier = Modifier.fillMaxWidth().padding(horizontal = 24.dp, vertical = 8.dp),
             verticalArrangement = Arrangement.spacedBy(12.dp),
         ) {
             Text(
-                text = stringResource(R.string.compatibility_mode_title),
+                text = stringResource(titleRes),
                 style = MaterialTheme.typography.headlineSmall,
             )
             Text(
-                text = stringResource(R.string.compatibility_info),
+                text = stringResource(bodyRes),
                 style = MaterialTheme.typography.bodyMedium,
                 color = MaterialTheme.colorScheme.onSurfaceVariant,
             )

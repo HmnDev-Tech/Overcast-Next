@@ -2,7 +2,7 @@ package com.sameerasw.overcast.ui.features.weather
 
 import android.content.Context
 import android.content.SharedPreferences
-import androidx.activity.compose.BackHandler
+import androidx.activity.compose.PredictiveBackHandler
 import androidx.compose.animation.AnimatedContent
 import androidx.compose.animation.AnimatedVisibility
 import androidx.compose.animation.BoundsTransform
@@ -13,12 +13,17 @@ import androidx.compose.animation.SizeTransform
 import androidx.compose.animation.core.Spring
 import androidx.compose.animation.core.VisibilityThreshold
 import androidx.compose.animation.core.spring
-import androidx.compose.animation.scaleIn
-import androidx.compose.animation.scaleOut
 import androidx.compose.animation.togetherWith
 import androidx.compose.animation.ExperimentalSharedTransitionApi
 import androidx.compose.animation.SharedTransitionLayout
 import androidx.compose.animation.fadeIn
+import androidx.compose.animation.core.Animatable
+import androidx.compose.animation.core.tween
+import androidx.compose.animation.core.LinearOutSlowInEasing
+import androidx.compose.animation.core.FastOutLinearInEasing
+import androidx.compose.ui.graphics.graphicsLayer
+import androidx.compose.runtime.rememberCoroutineScope
+import kotlinx.coroutines.launch
 import androidx.compose.animation.fadeOut
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
@@ -79,15 +84,14 @@ import com.sameerasw.overcast.weather.model.WeatherSnapshot
 import kotlinx.coroutines.CancellationException
 
 private const val ADVICE_BOUNDS_KEY = "weather_advice"
+private const val BACK_SCALE = 0.12f
 
 @OptIn(ExperimentalSharedTransitionApi::class)
 private val AdviceBoundsTransform = BoundsTransform { _, _ ->
-    spring(dampingRatio = 0.8f, stiffness = Spring.StiffnessMediumLow, visibilityThreshold = Rect.VisibilityThreshold)
+    spring(dampingRatio = 0.92f, stiffness = 320f, visibilityThreshold = Rect.VisibilityThreshold)
 }
-private val adviceEnter = fadeIn(spring(stiffness = Spring.StiffnessMediumLow)) +
-    scaleIn(spring(dampingRatio = 0.8f, stiffness = Spring.StiffnessMediumLow), initialScale = 0.92f, transformOrigin = TransformOrigin(1f, 1f))
-private val adviceExit = fadeOut(spring(stiffness = Spring.StiffnessMedium)) +
-    scaleOut(spring(stiffness = Spring.StiffnessMedium), targetScale = 0.92f, transformOrigin = TransformOrigin(1f, 1f))
+private val adviceEnter = fadeIn(tween(220, delayMillis = 90, easing = LinearOutSlowInEasing))
+private val adviceExit = fadeOut(tween(90, easing = FastOutLinearInEasing))
 
 @Composable
 fun rememberAiAdvice(snapshot: WeatherSnapshot?, units: WeatherUnits): String? {
@@ -136,17 +140,29 @@ fun BoxScope.AiAdviceFab(advice: String?, visible: Boolean, palette: WeatherPale
     if (advice != null) shownAdvice = advice
     val show = visible && advice != null
     LaunchedEffect(show) { if (!show) expanded = false }
-    BackHandler(enabled = expanded) { expanded = false }
+    val scope = rememberCoroutineScope()
+    val backProgress = remember { Animatable(0f) }
+    LaunchedEffect(expanded) { if (expanded) backProgress.snapTo(0f) }
+    PredictiveBackHandler(enabled = expanded) { events ->
+        try {
+            events.collect { backProgress.snapTo(it.progress) }
+            expanded = false
+        } catch (e: CancellationException) {
+            scope.launch { backProgress.animateTo(0f, spring(stiffness = Spring.StiffnessMediumLow)) }
+            throw e
+        }
+    }
 
     AnimatedVisibility(
         visible = expanded,
         modifier = Modifier.matchParentSize(),
-        enter = fadeIn(spring(stiffness = Spring.StiffnessMediumLow)),
-        exit = fadeOut(spring(stiffness = Spring.StiffnessMedium)),
+        enter = fadeIn(tween(280, easing = LinearOutSlowInEasing)),
+        exit = fadeOut(tween(220, easing = FastOutLinearInEasing)),
     ) {
         Box(
             Modifier
                 .fillMaxSize()
+                .graphicsLayer { alpha = 1f - backProgress.value * 0.5f }
                 .background(Color.Black.copy(alpha = 0.4f))
                 .clickable(interactionSource = null, indication = null) { expanded = false },
         )
@@ -196,6 +212,13 @@ fun BoxScope.AiAdviceFab(advice: String?, visible: Boolean, palette: WeatherPale
                     shadowElevation = 8.dp,
                     modifier = Modifier
                         .fillMaxWidth()
+                        .graphicsLayer {
+                            val p = backProgress.value
+                            val shrink = 1f - p * BACK_SCALE
+                            scaleX = shrink
+                            scaleY = shrink
+                            transformOrigin = TransformOrigin(1f, 1f)
+                        }
                         .sharedBounds(
                             rememberSharedContentState(ADVICE_BOUNDS_KEY),
                             animatedVisibilityScope = this@AnimatedContent,

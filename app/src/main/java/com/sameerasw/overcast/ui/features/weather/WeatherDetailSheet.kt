@@ -1,5 +1,12 @@
 package com.sameerasw.overcast.ui.features.weather
 
+import android.content.Intent
+import android.net.Uri
+import java.util.Calendar
+import com.sameerasw.overcast.weather.sky.AuroraForecast
+import com.sameerasw.overcast.weather.sky.SkyEvent
+import com.sameerasw.overcast.weather.sky.SkyEvents
+import kotlinx.coroutines.CancellationException
 import androidx.compose.runtime.mutableStateMapOf
 import android.content.Context
 import com.sameerasw.overcast.weather.effects.WeatherEffectHaptics
@@ -360,7 +367,9 @@ fun WeatherScreen(onOpenSettings: () -> Unit = {}) {
         typography = Typography,
         shapes = Shapes,
     ) {
-        CompositionLocalProvider(LocalRainSurfaces provides rainSurfaces, LocalWeatherIconStyle provides presentation.iconStyle) {
+        val mapHost = remember { MapFullscreenHost() }
+        var showShare by remember { mutableStateOf(false) }
+        CompositionLocalProvider(LocalRainSurfaces provides rainSurfaces, LocalWeatherIconStyle provides presentation.iconStyle, LocalMapFullscreenHost provides mapHost) {
         if (showLocations) {
             LocationPickerSheet(
                 scope = scope,
@@ -398,7 +407,7 @@ fun WeatherScreen(onOpenSettings: () -> Unit = {}) {
         DisposableEffect(Unit) {
             onDispose { window?.let { WindowCompat.getInsetsController(it, view).show(WindowInsetsCompat.Type.systemBars()) } }
         }
-        Box(Modifier.fillMaxSize().onSizeChanged { rootHeightPx.intValue = it.height; rootWidthPx.intValue = it.width }.weatherGlass(effectSpec, snapshot, presentation.clock, { collapse.floatValue }, effectRamp, !sheetOpen)) {
+        Box(Modifier.fillMaxSize().onSizeChanged { rootHeightPx.intValue = it.height; rootWidthPx.intValue = it.width }.weatherGlass(effectSpec, snapshot, presentation.clock, { collapse.floatValue }, effectRamp, !sheetOpen && !mapHost.active)) {
                 WeatherSkyBackground(snapshot, presentation.clock, palette, collapse = { collapse.floatValue })
                 val topFadePx = if (headerBottom.floatValue > 0f) {
                     val expandedFade = with(density) { 36.dp.toPx() }
@@ -592,16 +601,16 @@ fun WeatherScreen(onOpenSettings: () -> Unit = {}) {
                                         snapshot.upcomingDays().takeIf { it.isNotEmpty() }
                                             ?.let { DailySection(it, units, palette, Modifier.padding(horizontal = SIDE_PADDING)) }
                                         if (MainSection.DETAILS in visibleSections) DetailsSection(snapshot, units, palette, Modifier.padding(horizontal = SIDE_PADDING))
-                                        if (MainSection.WIND in visibleSections) WindSection(snapshot, units, palette, Modifier.padding(horizontal = SIDE_PADDING))
-                                        if (MainSection.ACTIVITIES in visibleSections) ActivitySection(snapshot, palette, Modifier.padding(horizontal = SIDE_PADDING))
-                                        if (MainSection.INSIGHTS in visibleSections) InsightsSection(state.snapshot ?: snapshot, units, palette, Modifier.padding(horizontal = SIDE_PADDING))
-                                        if (MainSection.RADAR in visibleSections) RadarSection(state.snapshot ?: snapshot, palette, Modifier.padding(horizontal = SIDE_PADDING))
+                                        if (MainSection.ACTIVITIES in visibleSections) ActivitySection(snapshot, units, palette, Modifier.padding(horizontal = SIDE_PADDING))
+                                        if (MainSection.RADAR in visibleSections) RadarSection(state.snapshot ?: snapshot, units, palette, Modifier.padding(horizontal = SIDE_PADDING))
                                         if (MainSection.AIR_QUALITY in visibleSections) AqiSection(state.snapshot ?: snapshot, palette, Modifier.padding(horizontal = SIDE_PADDING))
                                         if (MainSection.MARINE in visibleSections) MarineSection(state.snapshot ?: snapshot, units, palette, Modifier.padding(horizontal = SIDE_PADDING))
                                         if (MainSection.RIVER in visibleSections) RiverSection(state.snapshot ?: snapshot, palette, Modifier.padding(horizontal = SIDE_PADDING))
                                         if (MainSection.HISTORY in visibleSections) HistorySection(state.snapshot ?: snapshot, units, palette, Modifier.padding(horizontal = SIDE_PADDING))
                                         if (MainSection.SUN in visibleSections) SunSection(snapshot, palette, Modifier.padding(horizontal = SIDE_PADDING))
+                                        if (MainSection.SKY_EVENTS in visibleSections) SkyEventsSection(snapshot, palette, Modifier.padding(horizontal = SIDE_PADDING))
                                         if (MainSection.PLACES in visibleSections) PlacesSection(snapshot, units, palette, ::selectPlace, Modifier.padding(horizontal = SIDE_PADDING))
+                                        ConfidencePill(state.snapshot ?: snapshot, palette, Modifier.padding(horizontal = SIDE_PADDING))
                                         Footer(
                                             modifier = Modifier.padding(horizontal = SIDE_PADDING).rainSurface("footer"),
                                             snapshot = snapshot,
@@ -613,6 +622,7 @@ fun WeatherScreen(onOpenSettings: () -> Unit = {}) {
                                                 scope.launch { WeatherRepository.refresh(context, force = true) }
                                             },
                                             onOpenSettings = onOpenSettings,
+                                            onShare = { showShare = true },
                                         )
                                     }
                                 } else {
@@ -652,11 +662,10 @@ fun WeatherScreen(onOpenSettings: () -> Unit = {}) {
                                                 val live = state.snapshot ?: snapshot
                                                 when (section) {
                                                     MainSection.SUN -> SunSection(snapshot, palette, sectionModifier)
-                                                    MainSection.WIND -> WindSection(snapshot, units, palette, sectionModifier)
+                                                    MainSection.SKY_EVENTS -> SkyEventsSection(snapshot, palette, sectionModifier)
                                                     MainSection.HISTORY -> HistorySection(live, units, palette, sectionModifier)
-                                                    MainSection.ACTIVITIES -> ActivitySection(snapshot, palette, sectionModifier)
-                                                    MainSection.INSIGHTS -> InsightsSection(live, units, palette, sectionModifier)
-                                                    MainSection.RADAR -> RadarSection(live, palette, sectionModifier)
+                                                    MainSection.ACTIVITIES -> ActivitySection(snapshot, units, palette, sectionModifier)
+                                                    MainSection.RADAR -> RadarSection(live, units, palette, sectionModifier)
                                                     MainSection.AIR_QUALITY -> AqiSection(live, palette, sectionModifier)
                                                     MainSection.MARINE -> MarineSection(live, units, palette, sectionModifier)
                                                     MainSection.RIVER -> RiverSection(live, palette, sectionModifier)
@@ -701,6 +710,7 @@ fun WeatherScreen(onOpenSettings: () -> Unit = {}) {
                                                 if (MainSection.PLACES in visibleSections) {
                                                     PlacesSection(snapshot, units, palette, ::selectPlace, Modifier.onSizeChanged { placesHeight.intValue = it.height }.padding(top = 20.dp).padding(horizontal = SIDE_PADDING))
                                                 }
+                                                ConfidencePill(state.snapshot ?: snapshot, palette, Modifier.padding(top = 20.dp).padding(horizontal = SIDE_PADDING))
                                                 Footer(
                                                     modifier = Modifier
                                                         .padding(top = 20.dp)
@@ -716,6 +726,7 @@ fun WeatherScreen(onOpenSettings: () -> Unit = {}) {
                                                         scope.launch { WeatherRepository.refresh(context, force = true) }
                                                     },
                                                     onOpenSettings = onOpenSettings,
+                                                    onShare = { showShare = true },
                                                 )
                                             }
                                         }
@@ -801,7 +812,11 @@ fun WeatherScreen(onOpenSettings: () -> Unit = {}) {
                         }
                     }
                 }
-            AiAdviceFab(advice, visible = snapshot != null && !immersive && !sheetOpen, palette = palette)
+            AiAdviceFab(advice, visible = snapshot != null && !immersive && !sheetOpen && !mapHost.active, palette = palette)
+            mapHost.content?.invoke()
+            if (showShare && snapshot != null) {
+                ShareSheet(snapshot, units, palette, effectSpec, onDismiss = { showShare = false })
+            }
         }
         }
     }
@@ -891,10 +906,9 @@ internal fun Modifier.rainSurface(key: String, corner: Dp = 28.dp, mask: (() -> 
 
 internal val SIDE_PADDING = 20.dp
 private val BALANCED_SECTIONS = listOf(
-    MainSection.WIND,
     MainSection.ACTIVITIES,
     MainSection.SUN,
-    MainSection.INSIGHTS,
+    MainSection.SKY_EVENTS,
     MainSection.RADAR,
     MainSection.AIR_QUALITY,
     MainSection.MARINE,
@@ -1358,16 +1372,10 @@ internal class Detail(val slot: WeatherDetailSlot, val label: Int, val value: St
 private fun DetailsSection(snapshot: WeatherSnapshot, units: WeatherUnits, palette: WeatherPalette, modifier: Modifier) {
     val context = LocalContext.current
     val extras = snapshot.extras
+    val insight = rememberInsights(snapshot)
     val details = buildList {
         snapshot.humidity?.let { add(Detail(WeatherDetailSlot.HUMIDITY, R.string.weather_detail_humidity, "$it%")) }
-        add(
-            Detail(
-                WeatherDetailSlot.WIND,
-                R.string.weather_detail_wind,
-                WeatherFormat.wind(snapshot.windKph, units.wind) + (extras?.windDirectionDeg?.let { " ${compass(it)}" } ?: ""),
-            ),
-        )
-        extras?.windGustKph?.let { add(Detail(WeatherDetailSlot.GUSTS, R.string.weather_detail_gusts, WeatherFormat.wind(it, units.wind))) }
+        vsUsualDetail(context, snapshot, units, insight)?.let { add(it) }
         snapshot.chanceOfRain?.let { add(Detail(WeatherDetailSlot.RAIN_CHANCE, R.string.weather_detail_rain_chance, "$it%")) }
         extras?.precipitationMm?.let {
             add(Detail(WeatherDetailSlot.PRECIPITATION, R.string.weather_detail_precipitation, WeatherFormat.precipitation(it, units.precipitation)))
@@ -1454,6 +1462,82 @@ private fun SunSection(snapshot: WeatherSnapshot, palette: WeatherPalette, modif
 }
 
 @Composable
+private fun SkyEventsSection(snapshot: WeatherSnapshot, palette: WeatherPalette, modifier: Modifier) {
+    val context = LocalContext.current
+    val now by rememberMinuteClock()
+    val location = remember(snapshot.updatedAt) { WeatherRepository.lastFetchLocation() }
+    val auroraKp by produceState(emptyList<Pair<Long, Double>>(), location) {
+        if (location == null || abs(location.latitude) < AURORA_MIN_LATITUDE) return@produceState
+        value = try {
+            AuroraForecast.kpForecast()
+        } catch (e: CancellationException) {
+            throw e
+        } catch (_: Exception) {
+            emptyList()
+        }
+    }
+    val events = remember(snapshot, location, auroraKp, now / (60 * 60_000L)) {
+        SkyEvents.upcoming(context, snapshot, location?.latitude, auroraKp, now)
+    }
+    if (events.isEmpty()) return
+    RoundedCardContainer(modifier = modifier.rainSurface("sky_events"), spacing = 2.dp, cornerRadius = 28.dp) {
+        events.forEach { SkyEventRow(it, palette, now) }
+    }
+}
+
+@Composable
+private fun SkyEventRow(event: SkyEvent, palette: WeatherPalette, now: Long) {
+    val context = LocalContext.current
+    val view = LocalView.current
+    val title = event.name?.let { stringResource(event.titleRes, it) } ?: stringResource(event.titleRes)
+    val past = event.timeMillis < now - 60 * 60_000L
+    val day = SimpleDateFormat("EEE d MMM", Locale.getDefault()).format(Date(event.timeMillis))
+    val relative = if (abs(event.timeMillis - now) < 60 * 60_000L) {
+        stringResource(R.string.sky_now)
+    } else {
+        DateUtils.getRelativeTimeSpanString(event.timeMillis, now, DateUtils.DAY_IN_MILLIS).toString()
+    }
+    val detail = listOfNotNull(event.detailRes?.let { context.getString(it) }, event.detail).takeIf { !past }.orEmpty()
+    val year = Calendar.getInstance().apply { timeInMillis = event.timeMillis }.get(Calendar.YEAR)
+    Surface(color = palette.card, shape = MaterialTheme.shapes.extraSmall, modifier = Modifier.fillMaxWidth()) {
+        Row(
+            Modifier
+                .fillMaxWidth()
+                .then(
+                    if (event.searchable) {
+                        Modifier.clickable {
+                            HapticUtil.performVirtualKeyHaptic(view)
+                            val query = Uri.encode("$title $year")
+                            context.startActivity(Intent(Intent.ACTION_VIEW, Uri.parse("https://www.google.com/search?q=$query")))
+                        }
+                    } else {
+                        Modifier
+                    },
+                )
+                .graphicsLayer { alpha = if (past) 0.4f else 1f }
+                .padding(horizontal = 20.dp, vertical = 16.dp),
+            verticalAlignment = Alignment.CenterVertically,
+            horizontalArrangement = Arrangement.spacedBy(16.dp),
+        ) {
+            Icon(painterResource(event.kind.iconRes), contentDescription = null, tint = if (past) palette.onBaseMuted else palette.accent, modifier = Modifier.size(22.dp))
+            Column(Modifier.weight(1f)) {
+                Text(title, color = palette.onBase, style = MaterialTheme.typography.titleSmall)
+                Text(
+                    (listOf("$relative · $day") + detail).joinToString(" · "),
+                    color = palette.onBaseMuted,
+                    style = MaterialTheme.typography.bodySmall,
+                )
+            }
+            if (event.searchable && !past) {
+                Icon(painterResource(R.drawable.rounded_arrow_outward_24), contentDescription = null, tint = palette.onBaseMuted, modifier = Modifier.size(18.dp))
+            }
+        }
+    }
+}
+
+private const val AURORA_MIN_LATITUDE = 44.0
+
+@Composable
 private fun MoonTile(phase: Double, palette: WeatherPalette, modifier: Modifier) {
     Surface(color = palette.card, shape = MaterialTheme.shapes.extraSmall, modifier = modifier) {
         Row(Modifier.padding(20.dp), verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(16.dp)) {
@@ -1495,6 +1579,7 @@ private fun Footer(
     refreshing: Boolean,
     onRefresh: () -> Unit,
     onOpenSettings: () -> Unit,
+    onShare: () -> Unit,
 ) {
     val context = LocalContext.current
     val view = LocalView.current
@@ -1513,62 +1598,78 @@ private fun Footer(
     ).toString()
     val colors = ButtonDefaults.buttonColors(containerColor = palette.card, contentColor = palette.onBase)
     val height = SplitButtonDefaults.MediumContainerHeight
-    SplitButtonLayout(
-        modifier = modifier.fillMaxWidth(),
-        leadingButton = {
-            Surface(
-                onClick = onRefresh,
-                modifier = Modifier.fillMaxWidth().height(height),
-                shape = SplitButtonDefaults.leadingButtonShapesFor(height).shape,
-                color = palette.card,
-                contentColor = palette.onBase,
-            ) {
-                Row(
-                    modifier = Modifier.padding(start = 20.dp, end = 20.dp),
-                    verticalAlignment = Alignment.CenterVertically,
+    Row(modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+        SplitButtonLayout(
+            modifier = Modifier.weight(1f),
+            leadingButton = {
+                Surface(
+                    onClick = onRefresh,
+                    modifier = Modifier.fillMaxWidth().height(height),
+                    shape = SplitButtonDefaults.leadingButtonShapesFor(height).shape,
+                    color = palette.card,
+                    contentColor = palette.onBase,
                 ) {
-                    Column(
-                        modifier = Modifier.weight(1f),
-                        verticalArrangement = Arrangement.Center,
+                    Row(
+                        modifier = Modifier.padding(start = 20.dp, end = 20.dp),
+                        verticalAlignment = Alignment.CenterVertically,
                     ) {
-                        Text(
-                            text = error?.let { errorLabel(context, it) } ?: providerLabel(snapshot.providerId),
-                            color = palette.accent,
-                            style = MaterialTheme.typography.titleSmall,
-                            maxLines = 1,
-                            overflow = TextOverflow.Ellipsis,
-                        )
-                        Text(
-                            text = stringResource(R.string.weather_updated_at, age),
-                            style = MaterialTheme.typography.labelMedium,
-                            color = palette.onBaseMuted,
-                            maxLines = 1,
-                            overflow = TextOverflow.Ellipsis,
-                        )
+                        Column(
+                            modifier = Modifier.weight(1f),
+                            verticalArrangement = Arrangement.Center,
+                        ) {
+                            Text(
+                                text = error?.let { errorLabel(context, it) } ?: providerLabel(snapshot.providerId),
+                                color = palette.accent,
+                                style = MaterialTheme.typography.titleSmall,
+                                maxLines = 1,
+                                overflow = TextOverflow.Ellipsis,
+                            )
+                            Text(
+                                text = stringResource(R.string.weather_updated_at, age),
+                                style = MaterialTheme.typography.labelMedium,
+                                color = palette.onBaseMuted,
+                                maxLines = 1,
+                                overflow = TextOverflow.Ellipsis,
+                            )
+                        }
+                        RefreshIcon(refreshing, palette.accent)
                     }
-                    RefreshIcon(refreshing, palette.accent)
                 }
+            },
+            trailingButton = {
+                SplitButtonDefaults.TrailingButton(
+                    onClick = {
+                        HapticUtil.performVirtualKeyHaptic(view)
+                        onOpenSettings()
+                    },
+                    shapes = SplitButtonDefaults.trailingButtonShapesFor(height),
+                    colors = colors,
+                    contentPadding = SplitButtonDefaults.trailingButtonContentPaddingFor(height),
+                ) {
+                    Icon(
+                        painter = painterResource(R.drawable.rounded_settings_24),
+                        contentDescription = stringResource(R.string.weather_open_settings),
+                        tint = palette.accent,
+                        modifier = Modifier.size(SplitButtonDefaults.trailingButtonIconSizeFor(height)),
+                    )
+                }
+            },
+        )
+        Surface(
+            onClick = {
+                HapticUtil.performVirtualKeyHaptic(view)
+                onShare()
+            },
+            shape = CircleShape,
+            color = palette.card,
+            contentColor = palette.accent,
+            modifier = Modifier.size(height),
+        ) {
+            Box(contentAlignment = Alignment.Center) {
+                Icon(painterResource(R.drawable.rounded_share_24), contentDescription = stringResource(R.string.share_action), modifier = Modifier.size(22.dp))
             }
-        },
-        trailingButton = {
-            SplitButtonDefaults.TrailingButton(
-                onClick = {
-                    HapticUtil.performVirtualKeyHaptic(view)
-                    onOpenSettings()
-                },
-                shapes = SplitButtonDefaults.trailingButtonShapesFor(height),
-                colors = colors,
-                contentPadding = SplitButtonDefaults.trailingButtonContentPaddingFor(height),
-            ) {
-                Icon(
-                    painter = painterResource(R.drawable.rounded_settings_24),
-                    contentDescription = stringResource(R.string.weather_open_settings),
-                    tint = palette.accent,
-                    modifier = Modifier.size(SplitButtonDefaults.trailingButtonIconSizeFor(height)),
-                )
-            }
-        },
-    )
+        }
+    }
 }
 
 @Composable
