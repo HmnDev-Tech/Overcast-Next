@@ -158,6 +158,16 @@
     <string name="weather_place_remove_recent">Remove</string>
     <string name="weather_choose_location">Choose a location</string>
     <string name="share_action">Share</string>
+    <string name="share_save">Save</string>
+    <string name="share_saved">Saved to Pictures/Overcast</string>
+    <string name="share_save_failed">Couldn\'t save the image</string>
+    <string name="share_time_now">Now</string>
+    <string name="share_rain">Rain</string>
+    <string name="share_include_effects">Effects</string>
+    <string name="share_include_landscape">Landscape</string>
+    <string name="share_include_details">Details</string>
+    <string name="share_include_hourly">Hourly</string>
+    <string name="share_include_sun">Sunrise &amp; sunset</string>
     <string name="map_layer_rain">Rain</string>
     <string name="map_layer_temperature">Temperature</string>
     <string name="map_layer_clouds">Clouds</string>
