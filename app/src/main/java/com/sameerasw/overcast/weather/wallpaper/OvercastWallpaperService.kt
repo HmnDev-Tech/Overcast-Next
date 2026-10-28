@@ -194,7 +194,7 @@ class OvercastWallpaperService : WallpaperService() {
                 ?.let { WeatherSimulation.withTimeOfDay(it, timeOverride) }
                 ?.let { s -> tempOverride?.let { s.copy(tempC = it) } ?: s }
             val clock = WeatherSimulation.timeFor(snapshot, timeOverride, now)
-            val effects = snapshot != null && settings.isWeatherEffectsEnabled() && !DeviceUtils.isPowerSaveMode(applicationContext)
+            val effects = snapshot != null && settings.isWallpaperEffectsEnabled() && settings.isWeatherEffectsEnabled() && !DeviceUtils.isPowerSaveMode(applicationContext)
             val spec = if (effects && snapshot != null) simulation?.spec ?: WeatherEffectSpec.from(snapshot) else WeatherEffectSpec.None
             return Presentation(snapshot, WeatherPalette.from(snapshot, clock, timeOverride), spec, clock, now / 60_000L).also { shown = it }
         }

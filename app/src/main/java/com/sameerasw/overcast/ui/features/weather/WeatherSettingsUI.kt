@@ -691,6 +691,17 @@ fun WeatherSettingsUI(
                             .onFailure { runCatching { context.startActivity(Intent(WallpaperManager.ACTION_LIVE_WALLPAPER_CHOOSER)) } }
                     },
                 )
+                var wallpaperEffects by remember { mutableStateOf(settings.isWallpaperEffectsEnabled()) }
+                IconToggleItem(
+                    iconRes = R.drawable.rounded_rainy_24,
+                    title = stringResource(R.string.wallpaper_effects),
+                    isChecked = wallpaperEffects,
+                    onCheckedChange = {
+                        HapticUtil.performVirtualKeyHaptic(view)
+                        wallpaperEffects = it
+                        settings.setWallpaperEffectsEnabled(it)
+                    },
+                )
                 var wallpaperSmooth by remember { mutableStateOf(settings.isWallpaperSmoothEnabled()) }
                 IconToggleItem(
                     iconRes = R.drawable.rounded_speed_24,
