@@ -6,6 +6,11 @@ import androidx.compose.ui.platform.LocalContext
 import com.sameerasw.overcast.weather.WeatherFormat
 import com.sameerasw.overcast.weather.WeatherUnits
 import androidx.compose.animation.BoundsTransform
+import androidx.compose.animation.core.animateDpAsState
+import androidx.compose.foundation.layout.fillMaxHeight
+import androidx.compose.foundation.layout.height
+import androidx.compose.foundation.shape.RoundedCornerShape
+import androidx.compose.ui.unit.Dp
 import androidx.compose.animation.animateContentSize
 import androidx.compose.animation.ExperimentalSharedTransitionApi
 import androidx.compose.animation.animateBounds
@@ -13,7 +18,6 @@ import androidx.compose.animation.core.Spring
 import androidx.compose.animation.core.animateFloatAsState
 import androidx.compose.animation.core.spring
 import androidx.compose.animation.core.tween
-import androidx.compose.foundation.clickable
 import androidx.compose.material3.Surface
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.movableContentOf
@@ -26,6 +30,7 @@ import androidx.compose.ui.platform.LocalView
 import com.sameerasw.overcast.utils.HapticUtil
 import kotlinx.coroutines.delay
 import androidx.compose.foundation.layout.Arrangement
+import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.fillMaxWidth
@@ -37,9 +42,9 @@ import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.remember
+import androidx.compose.runtime.rememberUpdatedState
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
-import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.lerp
 import androidx.compose.ui.res.painterResource
@@ -239,55 +244,95 @@ fun ActivitySection(snapshot: WeatherSnapshot, units: WeatherUnits, palette: Wea
             listLayout = false
         }
     }
-    Surface(
-        color = palette.card,
-        shape = MaterialTheme.shapes.extraLarge,
-        modifier = modifier
+    val currentPalette by rememberUpdatedState(palette)
+    val toggle = {
+        HapticUtil.performVirtualKeyHaptic(view)
+        expanded = !expanded
+    }
+    Box(
+        modifier
             .rainSurface("activities")
             .fillMaxWidth()
-            .animateContentSize(spring(dampingRatio = 0.85f, stiffness = Spring.StiffnessMediumLow))
-            .clip(MaterialTheme.shapes.extraLarge)
-            .clickable {
-                HapticUtil.performVirtualKeyHaptic(view)
-                expanded = !expanded
-            },
+            .animateContentSize(spring(dampingRatio = 0.9f, stiffness = Spring.StiffnessMediumLow)),
     ) {
         LookaheadScope {
-            val icons = remember(items) {
-                items.map { item ->
-                    movableContentOf {
-                        GuidanceIcon(item, Modifier.animateBounds(this@LookaheadScope, boundsTransform = GuidanceBounds))
+            val tiles = remember(items) {
+                items.mapIndexed { index, item ->
+                    movableContentOf { tileModifier: Modifier, inList: Boolean ->
+                        GuidanceTile(
+                            item = item,
+                            index = index,
+                            count = items.size,
+                            inList = inList,
+                            detailsShown = detailsShown,
+                            palette = currentPalette,
+                            lookahead = this@LookaheadScope,
+                            onClick = toggle,
+                            modifier = tileModifier.animateBounds(this@LookaheadScope, boundsTransform = GuidanceBounds),
+                        )
                     }
                 }
             }
             if (listLayout) {
-                Column(Modifier.padding(20.dp), verticalArrangement = Arrangement.spacedBy(14.dp)) {
-                    items.forEachIndexed { index, item ->
-                        Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(14.dp)) {
-                            icons[index]()
-                            val reveal by animateFloatAsState(
-                                if (detailsShown) 1f else 0f,
-                                tween(DETAILS_FADE_MS, delayMillis = if (detailsShown) index * DETAILS_STAGGER_MS else 0),
-                                label = "guidanceRow",
-                            )
-                            Column(
-                                Modifier.weight(1f).graphicsLayer {
-                                    alpha = reveal
-                                    translationX = (1f - reveal) * 12.dp.toPx()
-                                },
-                            ) {
-                                Text(stringResource(item.questionRes), color = palette.onBaseMuted, style = MaterialTheme.typography.labelMedium)
-                                Text(item.answer, color = palette.onBase, style = MaterialTheme.typography.bodyLarge)
-                            }
-                        }
-                    }
+                Column(Modifier.fillMaxWidth(), verticalArrangement = Arrangement.spacedBy(SEGMENT_GAP)) {
+                    tiles.forEach { it(Modifier.fillMaxWidth(), true) }
                 }
             } else {
-                Row(
-                    Modifier.fillMaxWidth().padding(horizontal = 20.dp, vertical = 14.dp),
-                    horizontalArrangement = Arrangement.SpaceBetween,
+                Row(Modifier.fillMaxWidth().height(COLLAPSED_HEIGHT), horizontalArrangement = Arrangement.spacedBy(SEGMENT_GAP)) {
+                    tiles.forEach { it(Modifier.weight(1f).fillMaxHeight(), false) }
+                }
+            }
+        }
+    }
+}
+
+@OptIn(ExperimentalSharedTransitionApi::class)
+@Composable
+private fun GuidanceTile(
+    item: Guidance,
+    index: Int,
+    count: Int,
+    inList: Boolean,
+    detailsShown: Boolean,
+    palette: WeatherPalette,
+    lookahead: LookaheadScope,
+    onClick: () -> Unit,
+    modifier: Modifier,
+) {
+    val first = index == 0
+    val last = index == count - 1
+    fun corner(outer: Boolean) = if (outer) OUTER_CORNER else INNER_CORNER
+    val spec = spring<Dp>(dampingRatio = 0.9f, stiffness = Spring.StiffnessMediumLow)
+    val topStart by animateDpAsState(corner(first), spec, label = "topStart")
+    val topEnd by animateDpAsState(corner(if (inList) first else last), spec, label = "topEnd")
+    val bottomStart by animateDpAsState(corner(if (inList) last else first), spec, label = "bottomStart")
+    val bottomEnd by animateDpAsState(corner(last), spec, label = "bottomEnd")
+    val reveal by animateFloatAsState(
+        if (detailsShown && inList) 1f else 0f,
+        tween(DETAILS_FADE_MS, delayMillis = if (detailsShown) index * DETAILS_STAGGER_MS else 0),
+        label = "guidanceRow",
+    )
+    Surface(
+        onClick = onClick,
+        color = palette.card,
+        shape = RoundedCornerShape(topStart, topEnd, bottomEnd, bottomStart),
+        modifier = modifier,
+    ) {
+        Row(
+            Modifier.padding(horizontal = if (inList) 20.dp else 0.dp, vertical = if (inList) 16.dp else 0.dp),
+            verticalAlignment = Alignment.CenterVertically,
+            horizontalArrangement = if (inList) Arrangement.spacedBy(16.dp) else Arrangement.Center,
+        ) {
+            GuidanceIcon(item, Modifier.animateBounds(lookahead, boundsTransform = GuidanceBounds))
+            if (inList) {
+                Column(
+                    Modifier.weight(1f).graphicsLayer {
+                        alpha = reveal
+                        translationX = (1f - reveal) * 12.dp.toPx()
+                    },
                 ) {
-                    items.indices.forEach { icons[it]() }
+                    Text(stringResource(item.questionRes), color = palette.onBaseMuted, style = MaterialTheme.typography.labelMedium)
+                    Text(item.answer, color = palette.onBase, style = MaterialTheme.typography.bodyLarge)
                 }
             }
         }
@@ -303,6 +348,11 @@ private fun GuidanceIcon(item: Guidance, modifier: Modifier) {
         modifier = modifier.size(26.dp),
     )
 }
+
+private val OUTER_CORNER = 28.dp
+private val INNER_CORNER = 4.dp
+private val SEGMENT_GAP = 2.dp
+private val COLLAPSED_HEIGHT = 64.dp
 
 @OptIn(ExperimentalSharedTransitionApi::class)
 private val GuidanceBounds = BoundsTransform { _, _ -> spring(dampingRatio = 0.85f, stiffness = Spring.StiffnessMediumLow) }
