@@ -19,9 +19,13 @@ object DeviceLocationSource {
     private const val MAX_LAST_KNOWN_AGE_MS = 60 * 60_000L
 
     fun hasPermission(context: Context): Boolean =
-        context.checkSelfPermission(Manifest.permission.ACCESS_COARSE_LOCATION) == PackageManager.PERMISSION_GRANTED
+        context.checkSelfPermission(Manifest.permission.ACCESS_COARSE_LOCATION) == PackageManager.PERMISSION_GRANTED ||
+            hasPrecisePermission(context)
 
-    // Coarse, one-shot fix. Falls back to the last known location, which is what background refreshes usually get.
+    fun hasPrecisePermission(context: Context): Boolean =
+        context.checkSelfPermission(Manifest.permission.ACCESS_FINE_LOCATION) == PackageManager.PERMISSION_GRANTED
+
+    // One-shot fix, precise only when the user has granted it. Falls back to the last known location, which is what background refreshes usually get.
     @SuppressLint("MissingPermission")
     suspend fun current(context: Context): WeatherLocation? {
         if (!hasPermission(context)) return null
@@ -29,7 +33,7 @@ object DeviceLocationSource {
         val tokenSource = CancellationTokenSource()
         val fresh = withTimeoutOrNull(TIMEOUT_MS) {
             try {
-                client.getCurrentLocation(Priority.PRIORITY_BALANCED_POWER_ACCURACY, tokenSource.token).awaitOrNull()
+                client.getCurrentLocation(if (hasPrecisePermission(context)) Priority.PRIORITY_HIGH_ACCURACY else Priority.PRIORITY_BALANCED_POWER_ACCURACY, tokenSource.token).awaitOrNull()
             } catch (_: SecurityException) {
                 null
             }
