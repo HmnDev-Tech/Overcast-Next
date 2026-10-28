@@ -78,6 +78,13 @@ import kotlin.math.cos
 import kotlin.math.roundToInt
 import kotlin.math.sin
 import kotlin.math.sqrt
+import kotlin.math.abs
+import android.hardware.Sensor
+import android.hardware.SensorEvent
+import android.hardware.SensorEventListener
+import android.hardware.SensorManager
+import androidx.compose.runtime.State
+import androidx.compose.runtime.snapshotFlow
 import androidx.compose.animation.core.animateFloatAsState
 import kotlin.random.Random
 import androidx.compose.foundation.Canvas
@@ -169,6 +176,29 @@ private fun RadarTiles(radar: RadarMap, snapshot: WeatherSnapshot, units: Weathe
     val halfSize = remember { floatArrayOf(0f, 0f) }
     var frameIndex by remember(radar) { mutableIntStateOf(radar.frames.lastIndex) }
     var playing by remember { mutableStateOf(true) }
+    var compassOn by remember { mutableStateOf(false) }
+    val heading by rememberCompassHeading(compassOn)
+    var rotation by remember { mutableFloatStateOf(0f) }
+    LaunchedEffect(compassOn) {
+        if (!compassOn) return@LaunchedEffect
+        var facingNorth = false
+        snapshotFlow { heading }.collect { h ->
+            val off = abs(((h + 540f) % 360f) - 180f)
+            if (!facingNorth && off < 4f) {
+                facingNorth = true
+                HapticUtil.performStrongTickHaptic(view.context)
+            } else if (facingNorth && off > 12f) {
+                facingNorth = false
+            }
+        }
+    }
+    LaunchedEffect(Unit) {
+        while (true) withFrameNanos {
+            val target = if (compassOn) -heading else 0f
+            val delta = ((target - rotation + 540f) % 360f) - 180f
+            rotation = if (abs(delta) < 0.05f) target else rotation + delta * 0.12f
+        }
+    }
     LaunchedEffect(radar, playing) {
         if (!playing || radar.frames.size < 2) return@LaunchedEffect
         while (true) {
@@ -194,24 +224,30 @@ private fun RadarTiles(radar: RadarMap, snapshot: WeatherSnapshot, units: Weathe
             .clip(MaterialTheme.shapes.extraLarge)
             .background(Color(0xFF0E0E10))
             .pointerInput(Unit) {
-                detectTapGestures(onDoubleTap = { tap ->
-                    val fromScale = scale
-                    val fromPan = pan
-                    val toScale = if (fromScale > 1.01f) 1f else DOUBLE_TAP_ZOOM
-                    val center = Offset(halfSize[0], halfSize[1])
-                    val point = (tap - center - fromPan) / fromScale
-                    val limitX = halfSize[0] * (toScale - 1f)
-                    val limitY = halfSize[1] * (toScale - 1f)
-                    val target = tap - center - point * toScale
-                    val toPan = Offset(target.x.coerceIn(-limitX, limitX), target.y.coerceIn(-limitY, limitY))
-                    zoomJob?.cancel()
-                    zoomJob = scope.launch {
-                        animate(0f, 1f, animationSpec = spring(dampingRatio = 0.85f, stiffness = Spring.StiffnessMediumLow)) { t, _ ->
-                            scale = fromScale + (toScale - fromScale) * t
-                            pan = fromPan + (toPan - fromPan) * t
+                detectTapGestures(
+                    onTap = {
+                        HapticUtil.performVirtualKeyHaptic(view)
+                        compassOn = !compassOn
+                    },
+                    onDoubleTap = { tap ->
+                        val fromScale = scale
+                        val fromPan = pan
+                        val toScale = if (fromScale > 1.01f) 1f else DOUBLE_TAP_ZOOM
+                        val center = Offset(halfSize[0], halfSize[1])
+                        val point = (tap - center - fromPan) / fromScale
+                        val limitX = halfSize[0] * (toScale - 1f)
+                        val limitY = halfSize[1] * (toScale - 1f)
+                        val target = tap - center - point * toScale
+                        val toPan = Offset(target.x.coerceIn(-limitX, limitX), target.y.coerceIn(-limitY, limitY))
+                        zoomJob?.cancel()
+                        zoomJob = scope.launch {
+                            animate(0f, 1f, animationSpec = spring(dampingRatio = 0.85f, stiffness = Spring.StiffnessMediumLow)) { t, _ ->
+                                scale = fromScale + (toScale - fromScale) * t
+                                pan = fromPan + (toPan - fromPan) * t
+                            }
                         }
-                    }
-                })
+                    },
+                )
             }
             .transformable(transformState, canPan = { scale > 1.01f }),
     ) {
@@ -226,6 +262,7 @@ private fun RadarTiles(radar: RadarMap, snapshot: WeatherSnapshot, units: Weathe
                 .graphicsLayer {
                     scaleX = scale
                     scaleY = scale
+                    rotationZ = rotation
                     translationX = pan.x
                     translationY = pan.y
                 },
@@ -257,7 +294,7 @@ private fun RadarTiles(radar: RadarMap, snapshot: WeatherSnapshot, units: Weathe
         if (direction != null && snapshot.windKph > 0.5) {
             val windAlpha by animateFloatAsState(if (scale <= 1.01f) 1f else 0f, label = "windAlpha")
             if (windAlpha > 0f) {
-                WindParticles(direction, snapshot.windKph, Modifier.matchParentSize().graphicsLayer { alpha = windAlpha })
+                WindParticles(direction, snapshot.windKph, { rotation }, Modifier.matchParentSize().graphicsLayer { alpha = windAlpha })
             }
         }
         AnimatedVisibility(
@@ -298,6 +335,31 @@ private fun RadarTiles(radar: RadarMap, snapshot: WeatherSnapshot, units: Weathe
 }
 
 @Composable
+private fun rememberCompassHeading(active: Boolean): State<Float> {
+    val context = LocalContext.current
+    val heading = remember { mutableFloatStateOf(0f) }
+    DisposableEffect(active) {
+        if (!active) return@DisposableEffect onDispose {}
+        val manager = context.getSystemService(Context.SENSOR_SERVICE) as SensorManager
+        val sensor = manager.getDefaultSensor(Sensor.TYPE_ROTATION_VECTOR) ?: return@DisposableEffect onDispose {}
+        val matrix = FloatArray(9)
+        val orientation = FloatArray(3)
+        val listener = object : SensorEventListener {
+            override fun onSensorChanged(event: SensorEvent) {
+                SensorManager.getRotationMatrixFromVector(matrix, event.values)
+                SensorManager.getOrientation(matrix, orientation)
+                heading.floatValue = (Math.toDegrees(orientation[0].toDouble()).toFloat() + 360f) % 360f
+            }
+
+            override fun onAccuracyChanged(sensor: Sensor?, accuracy: Int) = Unit
+        }
+        manager.registerListener(listener, sensor, SensorManager.SENSOR_DELAY_UI)
+        onDispose { manager.unregisterListener(listener) }
+    }
+    return heading
+}
+
+@Composable
 private fun WindStats(snapshot: WeatherSnapshot, units: WeatherUnits, direction: Double?) {
     Row(
         Modifier
@@ -322,7 +384,7 @@ private fun WindStat(label: String, value: String, modifier: Modifier) {
 private const val WIND_PARTICLES = 24
 
 @Composable
-private fun WindParticles(directionDeg: Double, windKph: Double, modifier: Modifier) {
+private fun WindParticles(directionDeg: Double, windKph: Double, rotation: () -> Float, modifier: Modifier) {
     val seeds = remember { Random(7).let { r -> FloatArray(WIND_PARTICLES * 3) { r.nextFloat() } } }
     var time by remember { mutableFloatStateOf(0f) }
     LaunchedEffect(Unit) {
@@ -330,11 +392,11 @@ private fun WindParticles(directionDeg: Double, windKph: Double, modifier: Modif
         while (true) withFrameNanos { time = (it - start) / 1_000_000_000f }
     }
     // Meteorological direction is where the wind comes from; particles travel the other way.
-    val heading = Math.toRadians(directionDeg + 180.0)
-    val dx = sin(heading).toFloat()
-    val dy = -cos(heading).toFloat()
     val speed = (windKph.toFloat() / 30f).coerceIn(0.25f, 2.5f)
     Canvas(modifier) {
+        val heading = Math.toRadians(directionDeg + 180.0 + rotation())
+        val dx = sin(heading).toFloat()
+        val dy = -cos(heading).toFloat()
         val radius = size.minDimension * 0.4f
         val span = radius * 2f
         val travel = radius * 0.8f
