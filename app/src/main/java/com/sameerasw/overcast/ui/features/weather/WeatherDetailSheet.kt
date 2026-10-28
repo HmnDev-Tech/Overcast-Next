@@ -602,7 +602,6 @@ fun WeatherScreen(onOpenSettings: () -> Unit = {}) {
                                             ?.let { DailySection(it, units, palette, Modifier.padding(horizontal = SIDE_PADDING)) }
                                         if (MainSection.DETAILS in visibleSections) DetailsSection(snapshot, units, palette, Modifier.padding(horizontal = SIDE_PADDING))
                                         if (MainSection.ACTIVITIES in visibleSections) ActivitySection(snapshot, units, palette, Modifier.padding(horizontal = SIDE_PADDING))
-                                        if (MainSection.INSIGHTS in visibleSections) InsightsSection(state.snapshot ?: snapshot, units, palette, Modifier.padding(horizontal = SIDE_PADDING))
                                         if (MainSection.RADAR in visibleSections) RadarSection(state.snapshot ?: snapshot, units, palette, Modifier.padding(horizontal = SIDE_PADDING))
                                         if (MainSection.AIR_QUALITY in visibleSections) AqiSection(state.snapshot ?: snapshot, palette, Modifier.padding(horizontal = SIDE_PADDING))
                                         if (MainSection.MARINE in visibleSections) MarineSection(state.snapshot ?: snapshot, units, palette, Modifier.padding(horizontal = SIDE_PADDING))
@@ -611,6 +610,7 @@ fun WeatherScreen(onOpenSettings: () -> Unit = {}) {
                                         if (MainSection.SUN in visibleSections) SunSection(snapshot, palette, Modifier.padding(horizontal = SIDE_PADDING))
                                         if (MainSection.SKY_EVENTS in visibleSections) SkyEventsSection(snapshot, palette, Modifier.padding(horizontal = SIDE_PADDING))
                                         if (MainSection.PLACES in visibleSections) PlacesSection(snapshot, units, palette, ::selectPlace, Modifier.padding(horizontal = SIDE_PADDING))
+                                        ConfidencePill(state.snapshot ?: snapshot, palette, Modifier.padding(horizontal = SIDE_PADDING))
                                         Footer(
                                             modifier = Modifier.padding(horizontal = SIDE_PADDING).rainSurface("footer"),
                                             snapshot = snapshot,
@@ -665,7 +665,6 @@ fun WeatherScreen(onOpenSettings: () -> Unit = {}) {
                                                     MainSection.SKY_EVENTS -> SkyEventsSection(snapshot, palette, sectionModifier)
                                                     MainSection.HISTORY -> HistorySection(live, units, palette, sectionModifier)
                                                     MainSection.ACTIVITIES -> ActivitySection(snapshot, units, palette, sectionModifier)
-                                                    MainSection.INSIGHTS -> InsightsSection(live, units, palette, sectionModifier)
                                                     MainSection.RADAR -> RadarSection(live, units, palette, sectionModifier)
                                                     MainSection.AIR_QUALITY -> AqiSection(live, palette, sectionModifier)
                                                     MainSection.MARINE -> MarineSection(live, units, palette, sectionModifier)
@@ -711,6 +710,7 @@ fun WeatherScreen(onOpenSettings: () -> Unit = {}) {
                                                 if (MainSection.PLACES in visibleSections) {
                                                     PlacesSection(snapshot, units, palette, ::selectPlace, Modifier.onSizeChanged { placesHeight.intValue = it.height }.padding(top = 20.dp).padding(horizontal = SIDE_PADDING))
                                                 }
+                                                ConfidencePill(state.snapshot ?: snapshot, palette, Modifier.padding(top = 20.dp).padding(horizontal = SIDE_PADDING))
                                                 Footer(
                                                     modifier = Modifier
                                                         .padding(top = 20.dp)
@@ -909,7 +909,6 @@ private val BALANCED_SECTIONS = listOf(
     MainSection.ACTIVITIES,
     MainSection.SUN,
     MainSection.SKY_EVENTS,
-    MainSection.INSIGHTS,
     MainSection.RADAR,
     MainSection.AIR_QUALITY,
     MainSection.MARINE,
@@ -1373,8 +1372,10 @@ internal class Detail(val slot: WeatherDetailSlot, val label: Int, val value: St
 private fun DetailsSection(snapshot: WeatherSnapshot, units: WeatherUnits, palette: WeatherPalette, modifier: Modifier) {
     val context = LocalContext.current
     val extras = snapshot.extras
+    val insight = rememberInsights(snapshot)
     val details = buildList {
         snapshot.humidity?.let { add(Detail(WeatherDetailSlot.HUMIDITY, R.string.weather_detail_humidity, "$it%")) }
+        vsUsualDetail(context, snapshot, units, insight)?.let { add(it) }
         snapshot.chanceOfRain?.let { add(Detail(WeatherDetailSlot.RAIN_CHANCE, R.string.weather_detail_rain_chance, "$it%")) }
         extras?.precipitationMm?.let {
             add(Detail(WeatherDetailSlot.PRECIPITATION, R.string.weather_detail_precipitation, WeatherFormat.precipitation(it, units.precipitation)))

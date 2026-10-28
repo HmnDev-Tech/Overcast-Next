@@ -13,6 +13,7 @@ import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
+import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.material3.Icon
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Surface
@@ -145,36 +146,47 @@ fun RiverSection(snapshot: WeatherSnapshot, palette: WeatherPalette, modifier: M
 }
 
 @Composable
-fun InsightsSection(snapshot: WeatherSnapshot, units: WeatherUnits, palette: WeatherPalette, modifier: Modifier = Modifier) {
-    val context = LocalContext.current
-    val loaded = rememberExtra(snapshot) { ExtraRepository.insights(it) }
-    val shown = remember { mutableStateOf<InsightData?>(null) }
-    loaded?.let { shown.value = it }
-    ExtraCard(loaded != null, "insights", R.drawable.rounded_insights_24, R.string.insights_title, palette, modifier) {
-        val insight = shown.value ?: return@ExtraCard
-        DetailGrid(
-            buildList {
-                insight.normalHighC?.let { normal ->
-                    val diff = snapshot.todayHighC() - normal
-                    val delta = if (units.temperature == TemperatureUnit.FAHRENHEIT) abs(diff) * 9 / 5 else abs(diff)
-                    val amount = "${delta.roundToInt()}°"
-                    val text = when {
-                        abs(diff) < 1 -> context.getString(R.string.insight_normal)
-                        diff > 0 -> context.getString(R.string.insight_warmer, amount)
-                        else -> context.getString(R.string.insight_cooler, amount)
-                    }
-                    add(Detail(WeatherDetailSlot.TEMPERATURE, R.string.insight_vs_usual, text))
+internal fun rememberInsights(snapshot: WeatherSnapshot): InsightData? = rememberExtra(snapshot) { ExtraRepository.insights(it) }
+
+internal fun vsUsualDetail(context: Context, snapshot: WeatherSnapshot, units: WeatherUnits, insight: InsightData?): Detail? {
+    val normal = insight?.normalHighC ?: return null
+    val diff = snapshot.todayHighC() - normal
+    val delta = if (units.temperature == TemperatureUnit.FAHRENHEIT) abs(diff) * 9 / 5 else abs(diff)
+    val amount = "${delta.roundToInt()}°"
+    val text = when {
+        abs(diff) < 1 -> context.getString(R.string.insight_normal)
+        diff > 0 -> context.getString(R.string.insight_warmer, amount)
+        else -> context.getString(R.string.insight_cooler, amount)
+    }
+    return Detail(WeatherDetailSlot.TEMPERATURE, R.string.insight_vs_usual, text)
+}
+
+@Composable
+fun ConfidencePill(snapshot: WeatherSnapshot, palette: WeatherPalette, modifier: Modifier = Modifier) {
+    val confidence = rememberInsights(snapshot)?.confidence
+    AnimatedVisibility(confidence != null, modifier = modifier, enter = expandVertically() + fadeIn(), exit = shrinkVertically() + fadeOut()) {
+        val shown = remember { mutableStateOf(confidence) }
+        confidence?.let { shown.value = it }
+        val level = shown.value ?: return@AnimatedVisibility
+        val label = when (level) {
+            ForecastConfidence.HIGH -> R.string.pollen_level_high
+            ForecastConfidence.MEDIUM -> R.string.aqi_moderate
+            ForecastConfidence.LOW -> R.string.pollen_level_low
+        }
+        Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.Center) {
+            Surface(color = palette.card, contentColor = palette.onBaseMuted, shape = CircleShape) {
+                Row(
+                    Modifier.padding(horizontal = 14.dp, vertical = 6.dp),
+                    verticalAlignment = Alignment.CenterVertically,
+                    horizontalArrangement = Arrangement.spacedBy(6.dp),
+                ) {
+                    Icon(painterResource(R.drawable.rounded_insights_24), contentDescription = null, modifier = Modifier.size(16.dp))
+                    Text(
+                        "${stringResource(R.string.insight_confidence)} · ${stringResource(label)}",
+                        style = MaterialTheme.typography.labelMedium,
+                    )
                 }
-                insight.confidence?.let {
-                    val label = when (it) {
-                        ForecastConfidence.HIGH -> R.string.pollen_level_high
-                        ForecastConfidence.MEDIUM -> R.string.aqi_moderate
-                        ForecastConfidence.LOW -> R.string.pollen_level_low
-                    }
-                    add(Detail(WeatherDetailSlot.CLOUD_COVER, R.string.insight_confidence, context.getString(label)))
-                }
-            },
-            palette,
-        )
+            }
+        }
     }
 }
