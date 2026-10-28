@@ -634,7 +634,16 @@ private fun MapView(
         val windAlpha by animateFloatAsState(if (layer.showsWind) 1f else 0f, label = "windAlpha")
         if (windAlpha > 0f) {
             if (direction != null && snapshot.windKph > 0.5) {
-                WindParticles(direction, snapshot.windKph, { rotation }, Modifier.matchParentSize().graphicsLayer { alpha = windAlpha })
+                WindParticles(
+                    direction,
+                    snapshot.windKph,
+                    { rotation },
+                    Modifier.matchParentSize().graphicsLayer {
+                        alpha = windAlpha
+                        translationX = pan.x
+                        translationY = pan.y
+                    },
+                )
             }
             Box(
                 Modifier
