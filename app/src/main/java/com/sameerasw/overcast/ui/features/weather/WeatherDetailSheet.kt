@@ -360,7 +360,8 @@ fun WeatherScreen(onOpenSettings: () -> Unit = {}) {
         typography = Typography,
         shapes = Shapes,
     ) {
-        CompositionLocalProvider(LocalRainSurfaces provides rainSurfaces, LocalWeatherIconStyle provides presentation.iconStyle) {
+        val mapHost = remember { MapFullscreenHost() }
+        CompositionLocalProvider(LocalRainSurfaces provides rainSurfaces, LocalWeatherIconStyle provides presentation.iconStyle, LocalMapFullscreenHost provides mapHost) {
         if (showLocations) {
             LocationPickerSheet(
                 scope = scope,
@@ -398,7 +399,7 @@ fun WeatherScreen(onOpenSettings: () -> Unit = {}) {
         DisposableEffect(Unit) {
             onDispose { window?.let { WindowCompat.getInsetsController(it, view).show(WindowInsetsCompat.Type.systemBars()) } }
         }
-        Box(Modifier.fillMaxSize().onSizeChanged { rootHeightPx.intValue = it.height; rootWidthPx.intValue = it.width }.weatherGlass(effectSpec, snapshot, presentation.clock, { collapse.floatValue }, effectRamp, !sheetOpen)) {
+        Box(Modifier.fillMaxSize().onSizeChanged { rootHeightPx.intValue = it.height; rootWidthPx.intValue = it.width }.weatherGlass(effectSpec, snapshot, presentation.clock, { collapse.floatValue }, effectRamp, !sheetOpen && !mapHost.active)) {
                 WeatherSkyBackground(snapshot, presentation.clock, palette, collapse = { collapse.floatValue })
                 val topFadePx = if (headerBottom.floatValue > 0f) {
                     val expandedFade = with(density) { 36.dp.toPx() }
@@ -799,7 +800,8 @@ fun WeatherScreen(onOpenSettings: () -> Unit = {}) {
                         }
                     }
                 }
-            AiAdviceFab(advice, visible = snapshot != null && !immersive && !sheetOpen, palette = palette)
+            AiAdviceFab(advice, visible = snapshot != null && !immersive && !sheetOpen && !mapHost.active, palette = palette)
+            mapHost.content?.invoke()
         }
         }
     }

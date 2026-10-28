@@ -5,6 +5,8 @@ import com.sameerasw.overcast.data.repository.SettingsRepository
 import com.sameerasw.overcast.weather.WeatherRepository
 import com.sameerasw.overcast.weather.provider.ProviderHttp
 import com.sameerasw.overcast.weather.provider.WeatherProviderException
+import java.time.LocalDate
+import java.time.ZoneOffset
 import kotlin.math.PI
 import kotlin.math.cos
 import kotlin.math.floor
@@ -40,6 +42,11 @@ data class RadarMap(
     val frames: List<RadarFrame>,
     val centerX: Float,
     val centerY: Float,
+    val zoom: Int = 0,
+    val originTileX: Int = 0,
+    val originTileY: Int = 0,
+    val gridTiles: Int = 0,
+    val satelliteTiles: List<MapTile> = emptyList(),
 )
 
 class RadarException(val reason: Reason, message: String? = null) : Exception(message) {
@@ -130,15 +137,33 @@ object RadarRepository {
         val split = 1 shl BASE_ZOOM_STEP
         val baseN = n * split
         val baseSize = 1f / split
+        val satelliteDate = LocalDate.now(ZoneOffset.UTC).minusDays(1)
+        val satelliteTiles = mutableListOf<MapTile>()
         val baseTiles = buildList {
             for (by in 0 until (GRID * 2 + 1) * split) for (bx in 0 until (GRID * 2 + 1) * split) {
                 val ty = (tileY - GRID) * split + by
                 if (ty !in 0 until baseN) continue
                 val tx = Math.floorMod((tileX - GRID) * split + bx, baseN)
                 add(MapTile("https://tile.openstreetmap.org/${ZOOM + BASE_ZOOM_STEP}/$tx/$ty.png", bx * baseSize, by * baseSize, baseSize))
+                satelliteTiles += MapTile(
+                    "https://gibs.earthdata.nasa.gov/wmts/epsg3857/best/VIIRS_NOAA20_CorrectedReflectance_TrueColor/default/$satelliteDate/GoogleMapsCompatible_Level9/${ZOOM + BASE_ZOOM_STEP}/$ty/$tx.jpg",
+                    bx * baseSize,
+                    by * baseSize,
+                    baseSize,
+                )
             }
         }
-        return RadarMap(baseTiles, frames, GRID + (x - tileX).toFloat(), GRID + (y - tileY).toFloat())
+        return RadarMap(
+            baseTiles,
+            frames,
+            GRID + (x - tileX).toFloat(),
+            GRID + (y - tileY).toFloat(),
+            ZOOM,
+            tileX - GRID,
+            tileY - GRID,
+            GRID * 2 + 1,
+            satelliteTiles,
+        )
     }
 
     private suspend fun fetch(url: String): String = try {

@@ -73,6 +73,34 @@ import com.sameerasw.overcast.weather.radar.RadarRepository
 import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.Job
 import kotlinx.coroutines.launch
+import android.graphics.Bitmap
+import android.text.format.DateUtils
+import androidx.compose.foundation.layout.fillMaxSize
+import androidx.compose.ui.graphics.asImageBitmap
+import androidx.compose.ui.unit.IntSize
+import com.sameerasw.overcast.weather.radar.ForecastGrid
+import com.sameerasw.overcast.weather.radar.ForecastGridRepository
+import androidx.activity.compose.PredictiveBackHandler
+import androidx.compose.animation.core.Animatable
+import androidx.compose.foundation.layout.PaddingValues
+import androidx.compose.foundation.layout.navigationBarsPadding
+import androidx.compose.foundation.layout.statusBarsPadding
+import androidx.compose.foundation.shape.RoundedCornerShape
+import androidx.compose.runtime.movableContentOf
+import androidx.compose.runtime.rememberUpdatedState
+import androidx.compose.runtime.staticCompositionLocalOf
+import androidx.compose.ui.geometry.Rect
+import androidx.compose.ui.layout.boundsInRoot
+import androidx.compose.ui.layout.layout
+import androidx.compose.ui.layout.onGloballyPositioned
+import androidx.compose.ui.layout.positionInRoot
+import androidx.compose.ui.unit.Constraints
+import androidx.compose.ui.util.lerp
+import com.sameerasw.overcast.ui.core.containers.RoundedCardContainer
+import androidx.compose.material3.carousel.HorizontalMultiBrowseCarousel
+import androidx.compose.material3.carousel.rememberCarouselState
+import androidx.compose.foundation.clickable
+import androidx.compose.foundation.layout.height
 import kotlin.math.PI
 import kotlin.math.cos
 import kotlin.math.roundToInt
@@ -115,6 +143,7 @@ fun RadarSection(snapshot: WeatherSnapshot, units: WeatherUnits, palette: Weathe
     }
     val enabled = RadarProviders.resolve(providerId) != RadarProviders.OFF_ID
     var map by remember { mutableStateOf<RadarMap?>(null) }
+    var grid by remember { mutableStateOf<ForecastGrid?>(null) }
 
     LaunchedEffect(enabled, configVersion, snapshot.updatedAt, snapshot.locationName) {
         map = try {
@@ -130,6 +159,70 @@ fun RadarSection(snapshot: WeatherSnapshot, units: WeatherUnits, palette: Weathe
                 null
             }
         }
+        grid = map?.let { loaded ->
+            try {
+                ForecastGridRepository.load(loaded)
+            } catch (e: CancellationException) {
+                throw e
+            } catch (_: Exception) {
+                null
+            }
+        }
+    }
+
+    val host = LocalMapFullscreenHost.current
+    val scope = rememberCoroutineScope()
+    val ui = remember { MapUiState() }
+    val progress = remember { Animatable(0f) }
+    var fullscreen by remember { mutableStateOf(false) }
+    val cardBounds = remember { mutableStateOf(Rect.Zero) }
+    val shownMap = remember { mutableStateOf<RadarMap?>(null) }
+    map?.let { shownMap.value = it }
+    val latestGrid by rememberUpdatedState(grid)
+    val latestSnapshot by rememberUpdatedState(snapshot)
+    val latestUnits by rememberUpdatedState(units)
+    val latestPalette by rememberUpdatedState(palette)
+    val mapView = remember {
+        movableContentOf { contentModifier: Modifier, expanded: Boolean ->
+            shownMap.value?.let { MapView(it, latestGrid, latestSnapshot, latestUnits, latestPalette, ui, contentModifier, expanded) }
+        }
+    }
+
+    fun close() {
+        scope.launch {
+            progress.animateTo(0f, spring(dampingRatio = 0.9f, stiffness = Spring.StiffnessMediumLow))
+            fullscreen = false
+            host?.content = null
+        }
+    }
+
+    fun open() {
+        if (host == null) return
+        fullscreen = true
+        host.content = {
+            FullscreenMap(
+                bounds = { cardBounds.value },
+                progress = { progress.value },
+                palette = latestPalette,
+                onExit = { close() },
+            ) { mapView(Modifier.fillMaxSize(), true) }
+        }
+        scope.launch { progress.animateTo(1f, spring(dampingRatio = 0.85f, stiffness = Spring.StiffnessMediumLow)) }
+    }
+
+    PredictiveBackHandler(enabled = fullscreen) { events ->
+        try {
+            events.collect { event -> progress.snapTo(1f - event.progress * BACK_SHRINK) }
+            progress.animateTo(0f, spring(dampingRatio = 0.9f, stiffness = Spring.StiffnessMediumLow))
+            fullscreen = false
+            host?.content = null
+        } catch (e: CancellationException) {
+            scope.launch { progress.animateTo(1f) }
+            throw e
+        }
+    }
+    DisposableEffect(host) {
+        onDispose { if (fullscreen) host?.content = null }
     }
 
     AnimatedVisibility(
@@ -138,14 +231,167 @@ fun RadarSection(snapshot: WeatherSnapshot, units: WeatherUnits, palette: Weathe
         enter = expandVertically() + fadeIn(),
         exit = shrinkVertically() + fadeOut(),
     ) {
-        val shown = remember { mutableStateOf(map) }
-        map?.let { shown.value = it }
-        val radar = shown.value ?: return@AnimatedVisibility
-        RadarTiles(radar, snapshot, units, palette)
+        val radar = shownMap.value ?: return@AnimatedVisibility
+        val view = LocalView.current
+        RoundedCardContainer(Modifier.rainSurface("radar"), spacing = 2.dp, cornerRadius = 28.dp) {
+            Surface(color = palette.card, shape = MaterialTheme.shapes.extraSmall, modifier = Modifier.fillMaxWidth()) {
+                Row(Modifier.padding(end = 8.dp), verticalAlignment = Alignment.CenterVertically) {
+                    ModeCarousel(availableLayers(radar, grid), ui.layer, palette, Modifier.weight(1f)) {
+                        HapticUtil.performVirtualKeyHaptic(view)
+                        ui.layer = it
+                    }
+                    Surface(
+                        onClick = {
+                            HapticUtil.performVirtualKeyHaptic(view)
+                            open()
+                        },
+                        color = Color.Black.copy(alpha = 0.32f),
+                        contentColor = palette.onBase,
+                        shape = MaterialTheme.shapes.extraLarge,
+                        modifier = Modifier.padding(vertical = 6.dp),
+                    ) {
+                        Icon(
+                            painterResource(R.drawable.rounded_fullscreen_24),
+                            contentDescription = null,
+                            modifier = Modifier.padding(horizontal = 12.dp, vertical = 10.dp).size(24.dp),
+                        )
+                    }
+                }
+            }
+            Box(
+                Modifier
+                    .fillMaxWidth()
+                    .aspectRatio(1.4f)
+                    .clip(MaterialTheme.shapes.extraSmall)
+                    .background(MAP_BACKGROUND)
+                    .onGloballyPositioned { cardBounds.value = it.boundsInRoot() },
+            ) {
+                if (!fullscreen) mapView(Modifier.fillMaxSize(), false)
+            }
+        }
+    }
+}
+
+internal class MapFullscreenHost {
+    var content by mutableStateOf<(@Composable () -> Unit)?>(null)
+    val active: Boolean get() = content != null
+}
+
+internal val LocalMapFullscreenHost = staticCompositionLocalOf<MapFullscreenHost?> { null }
+
+private class MapUiState {
+    var layer by mutableStateOf(MapLayer.WIND)
+}
+
+private const val BACK_SHRINK = 0.3f
+private val MAP_BACKGROUND = Color(0xFF0E0E10)
+
+@Composable
+private fun FullscreenMap(
+    bounds: () -> Rect,
+    progress: () -> Float,
+    palette: WeatherPalette,
+    onExit: () -> Unit,
+    content: @Composable () -> Unit,
+) {
+    val view = LocalView.current
+    val origin = remember { floatArrayOf(0f, 0f) }
+    Box(
+        Modifier
+            .fillMaxSize()
+            .onGloballyPositioned {
+                val position = it.positionInRoot()
+                origin[0] = position.x
+                origin[1] = position.y
+            },
+    ) {
+        Box(Modifier.fillMaxSize().graphicsLayer { alpha = progress().coerceIn(0f, 1f) }.background(Color.Black.copy(alpha = 0.6f)))
+        Box(
+            Modifier
+                .layout { measurable, constraints ->
+                    val p = progress().coerceIn(0f, 1f)
+                    val from = bounds()
+                    val left = lerp(from.left - origin[0], 0f, p)
+                    val top = lerp(from.top - origin[1], 0f, p)
+                    val width = lerp(from.width, constraints.maxWidth.toFloat(), p).roundToInt().coerceAtLeast(1)
+                    val height = lerp(from.height, constraints.maxHeight.toFloat(), p).roundToInt().coerceAtLeast(1)
+                    val placeable = measurable.measure(Constraints.fixed(width, height))
+                    layout(constraints.maxWidth, constraints.maxHeight) { placeable.place(left.roundToInt(), top.roundToInt()) }
+                }
+                .graphicsLayer {
+                    shape = RoundedCornerShape(lerp(FULLSCREEN_CORNER.toPx(), 0f, progress().coerceIn(0f, 1f)))
+                    clip = true
+                }
+                .background(MAP_BACKGROUND),
+        ) {
+            content()
+            Surface(
+                onClick = {
+                    HapticUtil.performVirtualKeyHaptic(view)
+                    onExit()
+                },
+                color = Color.Black.copy(alpha = 0.55f),
+                contentColor = Color.White,
+                shape = CircleShape,
+                modifier = Modifier
+                    .align(Alignment.TopEnd)
+                    .statusBarsPadding()
+                    .padding(12.dp)
+                    .graphicsLayer { alpha = progress().coerceIn(0f, 1f) },
+            ) {
+                Icon(painterResource(R.drawable.rounded_fullscreen_exit_24), contentDescription = null, modifier = Modifier.padding(10.dp).size(24.dp))
+            }
+        }
+    }
+}
+
+private val FULLSCREEN_CORNER = 28.dp
+
+@Composable
+private fun ModeCarousel(
+    layers: List<MapLayer>,
+    selected: MapLayer,
+    palette: WeatherPalette,
+    modifier: Modifier,
+    onSelect: (MapLayer) -> Unit,
+) {
+    val state = rememberCarouselState { layers.size }
+    HorizontalMultiBrowseCarousel(
+        state = state,
+        preferredItemWidth = 128.dp,
+        itemSpacing = 6.dp,
+        minSmallItemWidth = 44.dp,
+        maxSmallItemWidth = 56.dp,
+        contentPadding = PaddingValues(horizontal = 8.dp, vertical = 6.dp),
+        modifier = modifier.height(56.dp),
+    ) { index ->
+        val option = layers[index]
+        val active = option == selected
+        Surface(
+            color = if (active) palette.accent else Color.Black.copy(alpha = 0.32f),
+            contentColor = if (active) Color.Black else palette.onBase,
+            modifier = Modifier
+                .fillMaxSize()
+                .maskClip(MaterialTheme.shapes.extraLarge)
+                .clickable { if (!active) onSelect(option) },
+        ) {
+            Row(
+                Modifier
+                    .fillMaxSize()
+                    .graphicsLayer { translationX = carouselItemDrawInfo.maskRect.left }
+                    .padding(horizontal = 14.dp),
+                verticalAlignment = Alignment.CenterVertically,
+                horizontalArrangement = Arrangement.spacedBy(8.dp),
+            ) {
+                Icon(painterResource(option.iconRes), contentDescription = null, modifier = Modifier.size(20.dp))
+                Text(stringResource(option.labelRes), style = MaterialTheme.typography.labelLarge, maxLines = 1, softWrap = false)
+            }
+        }
     }
 }
 
 private const val RADAR_TILES_ACROSS = 1.2f
+private const val CARD_ASPECT = 1.4f
 private const val MAX_RADAR_ZOOM = 4f
 private const val DOUBLE_TAP_ZOOM = 2.5f
 private const val LOOP_FRAME_MS = 600L
@@ -163,20 +409,39 @@ private val BaseMapFilter = ColorFilter.colorMatrix(
     ),
 )
 
+private val SatelliteFilter = ColorFilter.colorMatrix(ColorMatrix().apply { setToScale(0.8f, 0.8f, 0.8f, 1f) })
+
 // RainViewer's free palette draws light rain in a pale beige; boosting saturation turns it into a readable amber.
 private val RainFilter = ColorFilter.colorMatrix(ColorMatrix().apply { setToSaturation(2.4f) })
 
 @Composable
-private fun RadarTiles(radar: RadarMap, snapshot: WeatherSnapshot, units: WeatherUnits, palette: WeatherPalette) {
+private fun MapView(
+    radar: RadarMap,
+    grid: ForecastGrid?,
+    snapshot: WeatherSnapshot,
+    units: WeatherUnits,
+    palette: WeatherPalette,
+    ui: MapUiState,
+    modifier: Modifier,
+    expanded: Boolean,
+) {
     val context = LocalContext.current
     val density = LocalDensity.current
     val view = LocalView.current
     var scale by remember { mutableFloatStateOf(1f) }
     var pan by remember { mutableStateOf(Offset.Zero) }
     val halfSize = remember { floatArrayOf(0f, 0f) }
-    var frameIndex by remember(radar) { mutableIntStateOf(radar.frames.lastIndex) }
-    var playing by remember { mutableStateOf(true) }
+    val layers = remember(radar, grid) { availableLayers(radar, grid) }
+    val layer = if (ui.layer in layers) ui.layer else MapLayer.WIND
+    val frames = remember(radar, grid, layer) { framesFor(layer, radar, grid) }
+    val nowIndex = frames.indexOfLast { it.radarIndex >= 0 }.coerceAtLeast(0)
+    var frameIndex by remember(frames) { mutableIntStateOf(0) }
+    var playing by remember(layer) { mutableStateOf(true) }
+    val frame = frames.getOrNull(frameIndex)
     var compassOn by remember { mutableStateOf(false) }
+    LaunchedEffect(layer) {
+        if (layer.playable) compassOn = false
+    }
     val heading by rememberCompassHeading(compassOn)
     var rotation by remember { mutableFloatStateOf(0f) }
     LaunchedEffect(compassOn) {
@@ -199,11 +464,11 @@ private fun RadarTiles(radar: RadarMap, snapshot: WeatherSnapshot, units: Weathe
             rotation = if (abs(delta) < 0.05f) target else rotation + delta * 0.12f
         }
     }
-    LaunchedEffect(radar, playing) {
-        if (!playing || radar.frames.size < 2) return@LaunchedEffect
+    LaunchedEffect(frames, playing) {
+        if (!playing || frames.size < 2) return@LaunchedEffect
         while (true) {
-            delay(if (frameIndex == radar.frames.lastIndex) LOOP_HOLD_MS else LOOP_FRAME_MS)
-            frameIndex = (frameIndex + 1) % radar.frames.size
+            delay(if (frameIndex == frames.lastIndex || (frameIndex == nowIndex && nowIndex > 0)) LOOP_HOLD_MS else LOOP_FRAME_MS)
+            frameIndex = (frameIndex + 1) % frames.size
         }
     }
     val scope = rememberCoroutineScope()
@@ -216,18 +481,15 @@ private fun RadarTiles(radar: RadarMap, snapshot: WeatherSnapshot, units: Weathe
         val next = pan + panChange
         pan = Offset(next.x.coerceIn(-limitX, limitX), next.y.coerceIn(-limitY, limitY))
     }
+    val zoomedOut = scale <= 1.01f
     BoxWithConstraints(
-        Modifier
-            .fillMaxWidth()
-            .aspectRatio(1.4f)
-            .rainSurface("radar")
-            .clip(MaterialTheme.shapes.extraLarge)
-            .background(Color(0xFF0E0E10))
-            .pointerInput(Unit) {
+        modifier
+            .background(MAP_BACKGROUND)
+            .pointerInput(layer) {
                 detectTapGestures(
                     onTap = {
                         HapticUtil.performVirtualKeyHaptic(view)
-                        compassOn = !compassOn
+                        if (layer.playable) playing = !playing else compassOn = !compassOn
                     },
                     onDoubleTap = { tap ->
                         val fromScale = scale
@@ -253,7 +515,7 @@ private fun RadarTiles(radar: RadarMap, snapshot: WeatherSnapshot, units: Weathe
     ) {
         halfSize[0] = constraints.maxWidth / 2f
         halfSize[1] = constraints.maxHeight / 2f
-        val unitPx = constraints.maxWidth / RADAR_TILES_ACROSS
+        val unitPx = maxOf(constraints.maxWidth.toFloat(), constraints.maxHeight * CARD_ASPECT) / RADAR_TILES_ACROSS
         val originX = constraints.maxWidth / 2f - unitPx * radar.centerX
         val originY = constraints.maxHeight / 2f - unitPx * radar.centerY
         Box(
@@ -267,15 +529,26 @@ private fun RadarTiles(radar: RadarMap, snapshot: WeatherSnapshot, units: Weathe
                     translationY = pan.y
                 },
         ) {
-            radar.baseTiles.forEach { tile ->
-                MapTileImage(tile, unitPx, originX, originY, density, BaseMapFilter, 1f, context)
-            }
-            radar.frames.forEachIndexed { index, frame ->
-                // Every frame stays composed so Coil has them all loaded; only the current one is opaque.
-                val frameAlpha = if (index == frameIndex.coerceAtMost(radar.frames.lastIndex)) 1f else 0f
-                frame.tiles.forEach { tile ->
-                    MapTileImage(tile, unitPx, originX, originY, density, RainFilter, frameAlpha, context)
+            if (layer == MapLayer.SATELLITE) {
+                radar.satelliteTiles.forEach { tile ->
+                    MapTileImage(tile, unitPx, originX, originY, density, SatelliteFilter, 1f, context)
                 }
+            } else {
+                radar.baseTiles.forEach { tile ->
+                    MapTileImage(tile, unitPx, originX, originY, density, BaseMapFilter, 1f, context)
+                }
+            }
+            if (layer == MapLayer.RAIN) {
+                radar.frames.forEachIndexed { index, radarFrame ->
+                    // Every frame stays composed so Coil has them all loaded; only the current one is opaque.
+                    val frameAlpha = if (index == frame?.radarIndex) 1f else 0f
+                    radarFrame.tiles.forEach { tile ->
+                        MapTileImage(tile, unitPx, originX, originY, density, RainFilter, frameAlpha, context)
+                    }
+                }
+            }
+            if (grid != null && frame != null && frame.forecastIndex >= 0) {
+                GridOverlay(grid, layer, frame.forecastIndex, unitPx, originX, originY, radar.gridTiles)
             }
         }
         Box(
@@ -291,48 +564,178 @@ private fun RadarTiles(radar: RadarMap, snapshot: WeatherSnapshot, units: Weathe
                 .border(2.dp, Color.White, CircleShape),
         )
         val direction = snapshot.extras?.windDirectionDeg
-        if (direction != null && snapshot.windKph > 0.5) {
-            val windAlpha by animateFloatAsState(if (scale <= 1.01f) 1f else 0f, label = "windAlpha")
-            if (windAlpha > 0f) {
+        val windAlpha by animateFloatAsState(if (layer.showsWind && zoomedOut) 1f else 0f, label = "windAlpha")
+        if (windAlpha > 0f) {
+            if (direction != null && snapshot.windKph > 0.5) {
                 WindParticles(direction, snapshot.windKph, { rotation }, Modifier.matchParentSize().graphicsLayer { alpha = windAlpha })
             }
+            Box(
+                Modifier
+                    .align(Alignment.BottomCenter)
+                    .graphicsLayer { alpha = windAlpha },
+            ) {
+                WindStats(snapshot, units, direction, expanded)
+            }
         }
-        AnimatedVisibility(
-            visible = scale <= 1.01f,
-            modifier = Modifier.align(Alignment.BottomCenter),
-            enter = fadeIn() + expandVertically(expandFrom = Alignment.Top),
-            exit = fadeOut() + shrinkVertically(shrinkTowards = Alignment.Top),
-        ) {
-            WindStats(snapshot, units, direction)
-        }
-        val frameTime = radar.frames.getOrNull(frameIndex)?.timeMillis
-        if (radar.frames.size > 1 && frameTime != null) {
+        if (frame != null) {
             Surface(
-                onClick = {
-                    HapticUtil.performVirtualKeyHaptic(view)
-                    playing = !playing
-                },
                 color = Color.Black.copy(alpha = 0.55f),
                 contentColor = Color.White,
                 shape = CircleShape,
-                modifier = Modifier.align(Alignment.TopStart).padding(12.dp),
+                modifier = Modifier
+                    .align(Alignment.TopStart)
+                    .then(if (expanded) Modifier.statusBarsPadding() else Modifier)
+                    .padding(12.dp),
             ) {
                 Row(
                     Modifier.padding(horizontal = 12.dp, vertical = 6.dp),
                     verticalAlignment = Alignment.CenterVertically,
                     horizontalArrangement = Arrangement.spacedBy(6.dp),
                 ) {
-                    Icon(
-                        painterResource(if (playing) R.drawable.rounded_pause_24 else R.drawable.rounded_play_arrow_24),
-                        contentDescription = null,
-                        modifier = Modifier.size(16.dp),
-                    )
-                    Text(formatHour(context, frameTime), style = MaterialTheme.typography.labelMedium)
+                    if (!playing && frames.size > 1) {
+                        Icon(painterResource(R.drawable.rounded_pause_24), contentDescription = null, modifier = Modifier.size(16.dp))
+                    }
+                    Text(frameLabel(context, frame, layer, grid, radar, units), style = MaterialTheme.typography.labelMedium)
                 }
             }
         }
     }
 }
+
+private enum class MapLayer(val labelRes: Int, val iconRes: Int, val playable: Boolean, val showsWind: Boolean) {
+    WIND(R.string.weather_detail_wind, R.drawable.rounded_air_24, false, true),
+    RAIN(R.string.map_layer_rain, R.drawable.rounded_rainy_24, true, false),
+    TEMPERATURE(R.string.map_layer_temperature, R.drawable.rounded_thermostat_24, true, false),
+    CLOUDS(R.string.map_layer_clouds, R.drawable.rounded_cloud_24, true, false),
+    SATELLITE(R.string.map_layer_satellite, R.drawable.rounded_globe_24, false, true),
+}
+
+private class MapFrame(val timeMillis: Long, val radarIndex: Int = -1, val forecastIndex: Int = -1)
+
+private fun availableLayers(radar: RadarMap, grid: ForecastGrid?): List<MapLayer> = buildList {
+    add(MapLayer.WIND)
+    if (radar.frames.isNotEmpty() || grid != null) add(MapLayer.RAIN)
+    if (grid != null) {
+        add(MapLayer.TEMPERATURE)
+        add(MapLayer.CLOUDS)
+    }
+    if (radar.satelliteTiles.isNotEmpty()) add(MapLayer.SATELLITE)
+}
+
+private fun framesFor(layer: MapLayer, radar: RadarMap, grid: ForecastGrid?): List<MapFrame> {
+    val now = System.currentTimeMillis()
+    return when (layer) {
+        MapLayer.RAIN -> {
+            val past = radar.frames.mapIndexed { i, f -> MapFrame(f.timeMillis ?: now, radarIndex = i) }
+            val after = past.lastOrNull()?.timeMillis ?: (now - HOUR_MS)
+            past + grid?.times.orEmpty().mapIndexedNotNull { i, t -> if (t > after) MapFrame(t, forecastIndex = i) else null }
+        }
+        MapLayer.TEMPERATURE, MapLayer.CLOUDS -> grid?.times.orEmpty().mapIndexed { i, t -> MapFrame(t, forecastIndex = i) }
+        MapLayer.WIND, MapLayer.SATELLITE -> emptyList()
+    }
+}
+
+private fun frameLabel(context: Context, frame: MapFrame, layer: MapLayer, grid: ForecastGrid?, radar: RadarMap, units: WeatherUnits): String {
+    val sameDay = DateUtils.isToday(frame.timeMillis)
+    val time = (if (sameDay) "" else dayName(frame.timeMillis) + " ") + formatHour(context, frame.timeMillis)
+    if (grid == null || frame.forecastIndex < 0) return time
+    val value = sampleAt(grid, layerValues(grid, layer, frame.forecastIndex) ?: return time, radar.centerX, radar.centerY)
+    val reading = when (layer) {
+        MapLayer.TEMPERATURE -> WeatherFormat.temperature(value.toDouble(), units.temperature)
+        MapLayer.CLOUDS -> "${value.roundToInt()}%"
+        MapLayer.RAIN -> WeatherFormat.precipitation(value.toDouble(), units.precipitation)
+        MapLayer.WIND, MapLayer.SATELLITE -> return time
+    }
+    return "$time · $reading"
+}
+
+private fun layerValues(grid: ForecastGrid, layer: MapLayer, index: Int): FloatArray? = when (layer) {
+    MapLayer.RAIN -> grid.rainMm.getOrNull(index)
+    MapLayer.TEMPERATURE -> grid.temperatureC.getOrNull(index)
+    MapLayer.CLOUDS -> grid.cloudCover.getOrNull(index)
+    MapLayer.WIND, MapLayer.SATELLITE -> null
+}
+
+private fun sampleAt(grid: ForecastGrid, values: FloatArray, x: Float, y: Float): Float {
+    val gx = (x / grid.step).coerceIn(0f, grid.cols - 1f)
+    val gy = (y / grid.step).coerceIn(0f, grid.rows - 1f)
+    val c0 = gx.toInt().coerceAtMost(grid.cols - 2)
+    val r0 = gy.toInt().coerceAtMost(grid.rows - 2)
+    val fx = gx - c0
+    val fy = gy - r0
+    val top = values[r0 * grid.cols + c0] * (1 - fx) + values[r0 * grid.cols + c0 + 1] * fx
+    val bottom = values[(r0 + 1) * grid.cols + c0] * (1 - fx) + values[(r0 + 1) * grid.cols + c0 + 1] * fx
+    return top * (1 - fy) + bottom * fy
+}
+
+@Composable
+private fun GridOverlay(grid: ForecastGrid, layer: MapLayer, index: Int, unitPx: Float, originX: Float, originY: Float, gridTiles: Int) {
+    val image = remember(grid, layer, index) {
+        val values = layerValues(grid, layer, index) ?: return@remember null
+        val w = (grid.cols - 1) * GRID_RES + 1
+        val h = (grid.rows - 1) * GRID_RES + 1
+        val pixels = IntArray(w * h)
+        for (py in 0 until h) for (px in 0 until w) {
+            val v = sampleAt(grid, values, px.toFloat() / GRID_RES * grid.step, py.toFloat() / GRID_RES * grid.step)
+            pixels[py * w + px] = when (layer) {
+                MapLayer.TEMPERATURE -> rampColor(TemperatureRamp, v, 0.5f)
+                MapLayer.CLOUDS -> argb((v / 100f).coerceIn(0f, 1f).let { it * it } * 0.75f, 0xFFFFFF)
+                MapLayer.RAIN -> if (v < 0.05f) 0 else rampColor(RainRamp, v, (0.35f + v * 0.12f).coerceAtMost(0.8f))
+                MapLayer.WIND, MapLayer.SATELLITE -> 0
+            }
+        }
+        Bitmap.createBitmap(pixels, w, h, Bitmap.Config.ARGB_8888).asImageBitmap()
+    } ?: return
+    Canvas(Modifier.fillMaxSize()) {
+        val size = (gridTiles * unitPx).roundToInt()
+        drawImage(
+            image,
+            dstOffset = IntOffset(originX.roundToInt(), originY.roundToInt()),
+            dstSize = IntSize(size, size),
+            filterQuality = FilterQuality.Low,
+        )
+    }
+}
+
+private const val GRID_RES = 12
+private const val HOUR_MS = 60 * 60_000L
+
+private val TemperatureRamp = listOf(
+    -20f to 0x6A4BC4,
+    -5f to 0x3D7DD8,
+    5f to 0x39B8C9,
+    15f to 0x6CC26A,
+    22f to 0xF2D046,
+    30f to 0xF08A3A,
+    38f to 0xD63B3B,
+    45f to 0x9E1F4F,
+)
+
+private val RainRamp = listOf(
+    0.1f to 0x4FC3F7,
+    0.5f to 0x29B6F6,
+    1f to 0x66BB6A,
+    3f to 0xFFEE58,
+    6f to 0xFFA726,
+    12f to 0xEF5350,
+)
+
+private fun rampColor(ramp: List<Pair<Float, Int>>, value: Float, alpha: Float): Int {
+    val upper = ramp.indexOfFirst { it.first >= value }
+    val rgb = when {
+        upper <= 0 -> if (upper == 0) ramp.first().second else ramp.last().second
+        else -> {
+            val (v0, c0) = ramp[upper - 1]
+            val (v1, c1) = ramp[upper]
+            val t = (value - v0) / (v1 - v0)
+            fun channel(shift: Int) = (((c0 shr shift) and 0xFF) * (1 - t) + ((c1 shr shift) and 0xFF) * t).roundToInt()
+            (channel(16) shl 16) or (channel(8) shl 8) or channel(0)
+        }
+    }
+    return argb(alpha, rgb)
+}
+
+private fun argb(alpha: Float, rgb: Int): Int = ((alpha.coerceIn(0f, 1f) * 255).roundToInt() shl 24) or (rgb and 0xFFFFFF)
 
 @Composable
 private fun rememberCompassHeading(active: Boolean): State<Float> {
@@ -360,11 +763,12 @@ private fun rememberCompassHeading(active: Boolean): State<Float> {
 }
 
 @Composable
-private fun WindStats(snapshot: WeatherSnapshot, units: WeatherUnits, direction: Double?) {
+private fun WindStats(snapshot: WeatherSnapshot, units: WeatherUnits, direction: Double?, expanded: Boolean) {
     Row(
         Modifier
             .fillMaxWidth()
             .background(Brush.verticalGradient(listOf(Color.Transparent, Color.Black.copy(alpha = 0.7f))))
+            .then(if (expanded) Modifier.navigationBarsPadding() else Modifier)
             .padding(start = 20.dp, end = 20.dp, top = 28.dp, bottom = 16.dp),
     ) {
         WindStat(stringResource(R.string.weather_detail_direction), direction?.let { compass(it) } ?: "–", Modifier.weight(1f))
