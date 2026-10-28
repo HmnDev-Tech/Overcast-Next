@@ -73,10 +73,24 @@ import com.sameerasw.overcast.weather.radar.RadarRepository
 import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.Job
 import kotlinx.coroutines.launch
+import kotlin.math.PI
+import kotlin.math.cos
 import kotlin.math.roundToInt
+import kotlin.math.sin
+import kotlin.math.sqrt
+import androidx.compose.animation.core.animateFloatAsState
+import kotlin.random.Random
+import androidx.compose.foundation.Canvas
+import androidx.compose.foundation.layout.Column
+import androidx.compose.runtime.withFrameNanos
+import androidx.compose.ui.graphics.Brush
+import androidx.compose.ui.graphics.StrokeCap
+import androidx.compose.ui.res.stringResource
+import com.sameerasw.overcast.weather.WeatherFormat
+import com.sameerasw.overcast.weather.WeatherUnits
 
 @Composable
-fun RadarSection(snapshot: WeatherSnapshot, palette: WeatherPalette, modifier: Modifier = Modifier) {
+fun RadarSection(snapshot: WeatherSnapshot, units: WeatherUnits, palette: WeatherPalette, modifier: Modifier = Modifier) {
     val context = LocalContext.current
     val settings = remember { SettingsRepository(context) }
     var providerId by remember { mutableStateOf(settings.getRadarProvider()) }
@@ -96,21 +110,23 @@ fun RadarSection(snapshot: WeatherSnapshot, palette: WeatherPalette, modifier: M
     var map by remember { mutableStateOf<RadarMap?>(null) }
 
     LaunchedEffect(enabled, configVersion, snapshot.updatedAt, snapshot.locationName) {
-        if (!enabled) {
-            map = null
-            return@LaunchedEffect
-        }
         map = try {
-            RadarRepository.current(context)
+            if (enabled) RadarRepository.current(context) else RadarRepository.baseMap(context)
         } catch (e: CancellationException) {
             throw e
         } catch (_: Exception) {
-            null
+            try {
+                RadarRepository.baseMap(context)
+            } catch (e: CancellationException) {
+                throw e
+            } catch (_: Exception) {
+                null
+            }
         }
     }
 
     AnimatedVisibility(
-        visible = enabled && map != null,
+        visible = map != null,
         modifier = modifier,
         enter = expandVertically() + fadeIn(),
         exit = shrinkVertically() + fadeOut(),
@@ -118,7 +134,7 @@ fun RadarSection(snapshot: WeatherSnapshot, palette: WeatherPalette, modifier: M
         val shown = remember { mutableStateOf(map) }
         map?.let { shown.value = it }
         val radar = shown.value ?: return@AnimatedVisibility
-        RadarTiles(radar, palette)
+        RadarTiles(radar, snapshot, units, palette)
     }
 }
 
@@ -144,7 +160,7 @@ private val BaseMapFilter = ColorFilter.colorMatrix(
 private val RainFilter = ColorFilter.colorMatrix(ColorMatrix().apply { setToSaturation(2.4f) })
 
 @Composable
-private fun RadarTiles(radar: RadarMap, palette: WeatherPalette) {
+private fun RadarTiles(radar: RadarMap, snapshot: WeatherSnapshot, units: WeatherUnits, palette: WeatherPalette) {
     val context = LocalContext.current
     val density = LocalDensity.current
     val view = LocalView.current
@@ -237,6 +253,21 @@ private fun RadarTiles(radar: RadarMap, palette: WeatherPalette) {
                 .background(palette.accent)
                 .border(2.dp, Color.White, CircleShape),
         )
+        val direction = snapshot.extras?.windDirectionDeg
+        if (direction != null && snapshot.windKph > 0.5) {
+            val windAlpha by animateFloatAsState(if (scale <= 1.01f) 1f else 0f, label = "windAlpha")
+            if (windAlpha > 0f) {
+                WindParticles(direction, snapshot.windKph, Modifier.matchParentSize().graphicsLayer { alpha = windAlpha })
+            }
+        }
+        AnimatedVisibility(
+            visible = scale <= 1.01f,
+            modifier = Modifier.align(Alignment.BottomCenter),
+            enter = fadeIn() + expandVertically(expandFrom = Alignment.Top),
+            exit = fadeOut() + shrinkVertically(shrinkTowards = Alignment.Top),
+        ) {
+            WindStats(snapshot, units, direction)
+        }
         val frameTime = radar.frames.getOrNull(frameIndex)?.timeMillis
         if (radar.frames.size > 1 && frameTime != null) {
             Surface(
@@ -247,7 +278,7 @@ private fun RadarTiles(radar: RadarMap, palette: WeatherPalette) {
                 color = Color.Black.copy(alpha = 0.55f),
                 contentColor = Color.White,
                 shape = CircleShape,
-                modifier = Modifier.align(Alignment.BottomStart).padding(12.dp),
+                modifier = Modifier.align(Alignment.TopStart).padding(12.dp),
             ) {
                 Row(
                     Modifier.padding(horizontal = 12.dp, vertical = 6.dp),
@@ -262,6 +293,69 @@ private fun RadarTiles(radar: RadarMap, palette: WeatherPalette) {
                     Text(formatHour(context, frameTime), style = MaterialTheme.typography.labelMedium)
                 }
             }
+        }
+    }
+}
+
+@Composable
+private fun WindStats(snapshot: WeatherSnapshot, units: WeatherUnits, direction: Double?) {
+    Row(
+        Modifier
+            .fillMaxWidth()
+            .background(Brush.verticalGradient(listOf(Color.Transparent, Color.Black.copy(alpha = 0.7f))))
+            .padding(start = 20.dp, end = 20.dp, top = 28.dp, bottom = 16.dp),
+    ) {
+        WindStat(stringResource(R.string.weather_detail_direction), direction?.let { compass(it) } ?: "–", Modifier.weight(1f))
+        WindStat(stringResource(R.string.weather_detail_wind), WeatherFormat.wind(snapshot.windKph, units.wind), Modifier.weight(1f))
+        WindStat(stringResource(R.string.weather_detail_gusts), snapshot.extras?.windGustKph?.let { WeatherFormat.wind(it, units.wind) } ?: "–", Modifier.weight(1f))
+    }
+}
+
+@Composable
+private fun WindStat(label: String, value: String, modifier: Modifier) {
+    Column(modifier) {
+        Text(label, color = Color.White.copy(alpha = 0.7f), style = MaterialTheme.typography.labelMedium)
+        Text(value, color = Color.White, style = MaterialTheme.typography.titleMedium)
+    }
+}
+
+private const val WIND_PARTICLES = 24
+
+@Composable
+private fun WindParticles(directionDeg: Double, windKph: Double, modifier: Modifier) {
+    val seeds = remember { Random(7).let { r -> FloatArray(WIND_PARTICLES * 3) { r.nextFloat() } } }
+    var time by remember { mutableFloatStateOf(0f) }
+    LaunchedEffect(Unit) {
+        val start = withFrameNanos { it }
+        while (true) withFrameNanos { time = (it - start) / 1_000_000_000f }
+    }
+    // Meteorological direction is where the wind comes from; particles travel the other way.
+    val heading = Math.toRadians(directionDeg + 180.0)
+    val dx = sin(heading).toFloat()
+    val dy = -cos(heading).toFloat()
+    val speed = (windKph.toFloat() / 30f).coerceIn(0.25f, 2.5f)
+    Canvas(modifier) {
+        val radius = size.minDimension * 0.4f
+        val span = radius * 2f
+        val travel = radius * 0.8f
+        val streak = 18.dp.toPx() + 10.dp.toPx() * speed.coerceAtMost(1.5f)
+        val stroke = 5.dp.toPx()
+        for (i in 0 until WIND_PARTICLES) {
+            val phase = (time * speed * 0.45f + seeds[i * 3 + 2]) % 1f
+            val u = (seeds[i * 3] * span + dx * travel * phase).mod(span) - radius
+            val v = (seeds[i * 3 + 1] * span + dy * travel * phase).mod(span) - radius
+            val falloff = (1f - sqrt(u * u + v * v) / radius).coerceIn(0f, 1f)
+            if (falloff <= 0f) continue
+            val alpha = sin(phase * PI.toFloat()) * 0.8f * falloff
+            val head = Offset(center.x + u, center.y + v)
+            val tail = Offset(head.x - dx * streak, head.y - dy * streak)
+            drawLine(
+                Brush.linearGradient(listOf(Color.White.copy(alpha = 0f), Color.White.copy(alpha = alpha)), start = tail, end = head),
+                tail,
+                head,
+                strokeWidth = stroke,
+                cap = StrokeCap.Round,
+            )
         }
     }
 }

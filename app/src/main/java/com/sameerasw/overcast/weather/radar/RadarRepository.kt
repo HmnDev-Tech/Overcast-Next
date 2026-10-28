@@ -72,9 +72,11 @@ object RadarRepository {
         throw e
     }
 
-    private suspend fun load(context: Context): RadarMap {
+    suspend fun baseMap(context: Context): RadarMap = load(context, withRadar = false)
+
+    private suspend fun load(context: Context, withRadar: Boolean = true): RadarMap {
         val settings = SettingsRepository(context)
-        val provider = RadarProviders.resolve(settings.getRadarProvider())
+        val provider = if (withRadar) RadarProviders.resolve(settings.getRadarProvider()) else RadarProviders.OFF_ID
         val loc = WeatherRepository.lastKnownLocation(context) ?: throw RadarException(RadarException.Reason.NO_LOCATION)
         val n = 1 shl ZOOM
         val x = (loc.longitude + 180.0) / 360.0 * n
@@ -108,10 +110,10 @@ object RadarRepository {
                 frameUrls = listOf(null to url)
             }
 
-            else -> throw RadarException(RadarException.Reason.BAD_RESPONSE)
+            else -> frameUrls = emptyList()
         }
 
-        fetch(frameUrls.last().second(Math.floorMod(tileX, n), tileY.coerceIn(0, n - 1)))
+        frameUrls.lastOrNull()?.let { fetch(it.second(Math.floorMod(tileX, n), tileY.coerceIn(0, n - 1))) }
 
         val frames = frameUrls.map { (time, overlay) ->
             RadarFrame(

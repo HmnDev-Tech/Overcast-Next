@@ -10,6 +10,7 @@
     <string name="weather_detail_cloud_cover">Cloud cover</string>
     <string name="weather_detail_dew_point">Dew point</string>
     <string name="weather_detail_gusts">Gusts</string>
+    <string name="weather_detail_direction">Direction</string>
     <string name="weather_detail_humidity">Humidity</string>
     <string name="weather_detail_precipitation">Precipitation</string>
     <string name="weather_detail_pressure">Pressure</string>

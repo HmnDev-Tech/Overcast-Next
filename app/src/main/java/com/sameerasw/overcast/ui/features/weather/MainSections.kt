@@ -15,7 +15,6 @@ import com.sameerasw.overcast.data.repository.SettingsRepository
 enum class MainSection(val key: String, val iconRes: Int, val titleRes: Int) {
     TREND("section_trend", R.drawable.rounded_show_chart_24, R.string.trend_title),
     DETAILS("section_details", R.drawable.rounded_dashboard_24, R.string.section_details),
-    WIND("section_wind", R.drawable.rounded_explore_24, R.string.weather_detail_wind),
     ACTIVITIES("section_activities", R.drawable.rounded_directions_run_24, R.string.activity_title),
     INSIGHTS("section_insights", R.drawable.rounded_insights_24, R.string.insights_title),
     RADAR("section_radar", R.drawable.rounded_radar_24, R.string.section_radar),
