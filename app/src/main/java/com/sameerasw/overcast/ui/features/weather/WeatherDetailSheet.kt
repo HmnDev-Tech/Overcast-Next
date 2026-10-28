@@ -361,6 +361,7 @@ fun WeatherScreen(onOpenSettings: () -> Unit = {}) {
         shapes = Shapes,
     ) {
         val mapHost = remember { MapFullscreenHost() }
+        var showShare by remember { mutableStateOf(false) }
         CompositionLocalProvider(LocalRainSurfaces provides rainSurfaces, LocalWeatherIconStyle provides presentation.iconStyle, LocalMapFullscreenHost provides mapHost) {
         if (showLocations) {
             LocationPickerSheet(
@@ -613,6 +614,7 @@ fun WeatherScreen(onOpenSettings: () -> Unit = {}) {
                                                 scope.launch { WeatherRepository.refresh(context, force = true) }
                                             },
                                             onOpenSettings = onOpenSettings,
+                                            onShare = { showShare = true },
                                         )
                                     }
                                 } else {
@@ -715,6 +717,7 @@ fun WeatherScreen(onOpenSettings: () -> Unit = {}) {
                                                         scope.launch { WeatherRepository.refresh(context, force = true) }
                                                     },
                                                     onOpenSettings = onOpenSettings,
+                                                    onShare = { showShare = true },
                                                 )
                                             }
                                         }
@@ -802,6 +805,9 @@ fun WeatherScreen(onOpenSettings: () -> Unit = {}) {
                 }
             AiAdviceFab(advice, visible = snapshot != null && !immersive && !sheetOpen && !mapHost.active, palette = palette)
             mapHost.content?.invoke()
+            if (showShare && snapshot != null) {
+                ShareSheet(snapshot, units, palette, effectSpec, onDismiss = { showShare = false })
+            }
         }
         }
     }
@@ -1486,6 +1492,7 @@ private fun Footer(
     refreshing: Boolean,
     onRefresh: () -> Unit,
     onOpenSettings: () -> Unit,
+    onShare: () -> Unit,
 ) {
     val context = LocalContext.current
     val view = LocalView.current
@@ -1504,62 +1511,78 @@ private fun Footer(
     ).toString()
     val colors = ButtonDefaults.buttonColors(containerColor = palette.card, contentColor = palette.onBase)
     val height = SplitButtonDefaults.MediumContainerHeight
-    SplitButtonLayout(
-        modifier = modifier.fillMaxWidth(),
-        leadingButton = {
-            Surface(
-                onClick = onRefresh,
-                modifier = Modifier.fillMaxWidth().height(height),
-                shape = SplitButtonDefaults.leadingButtonShapesFor(height).shape,
-                color = palette.card,
-                contentColor = palette.onBase,
-            ) {
-                Row(
-                    modifier = Modifier.padding(start = 20.dp, end = 20.dp),
-                    verticalAlignment = Alignment.CenterVertically,
+    Row(modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+        SplitButtonLayout(
+            modifier = Modifier.weight(1f),
+            leadingButton = {
+                Surface(
+                    onClick = onRefresh,
+                    modifier = Modifier.fillMaxWidth().height(height),
+                    shape = SplitButtonDefaults.leadingButtonShapesFor(height).shape,
+                    color = palette.card,
+                    contentColor = palette.onBase,
                 ) {
-                    Column(
-                        modifier = Modifier.weight(1f),
-                        verticalArrangement = Arrangement.Center,
+                    Row(
+                        modifier = Modifier.padding(start = 20.dp, end = 20.dp),
+                        verticalAlignment = Alignment.CenterVertically,
                     ) {
-                        Text(
-                            text = error?.let { errorLabel(context, it) } ?: providerLabel(snapshot.providerId),
-                            color = palette.accent,
-                            style = MaterialTheme.typography.titleSmall,
-                            maxLines = 1,
-                            overflow = TextOverflow.Ellipsis,
-                        )
-                        Text(
-                            text = stringResource(R.string.weather_updated_at, age),
-                            style = MaterialTheme.typography.labelMedium,
-                            color = palette.onBaseMuted,
-                            maxLines = 1,
-                            overflow = TextOverflow.Ellipsis,
-                        )
+                        Column(
+                            modifier = Modifier.weight(1f),
+                            verticalArrangement = Arrangement.Center,
+                        ) {
+                            Text(
+                                text = error?.let { errorLabel(context, it) } ?: providerLabel(snapshot.providerId),
+                                color = palette.accent,
+                                style = MaterialTheme.typography.titleSmall,
+                                maxLines = 1,
+                                overflow = TextOverflow.Ellipsis,
+                            )
+                            Text(
+                                text = stringResource(R.string.weather_updated_at, age),
+                                style = MaterialTheme.typography.labelMedium,
+                                color = palette.onBaseMuted,
+                                maxLines = 1,
+                                overflow = TextOverflow.Ellipsis,
+                            )
+                        }
+                        RefreshIcon(refreshing, palette.accent)
                     }
-                    RefreshIcon(refreshing, palette.accent)
                 }
+            },
+            trailingButton = {
+                SplitButtonDefaults.TrailingButton(
+                    onClick = {
+                        HapticUtil.performVirtualKeyHaptic(view)
+                        onOpenSettings()
+                    },
+                    shapes = SplitButtonDefaults.trailingButtonShapesFor(height),
+                    colors = colors,
+                    contentPadding = SplitButtonDefaults.trailingButtonContentPaddingFor(height),
+                ) {
+                    Icon(
+                        painter = painterResource(R.drawable.rounded_settings_24),
+                        contentDescription = stringResource(R.string.weather_open_settings),
+                        tint = palette.accent,
+                        modifier = Modifier.size(SplitButtonDefaults.trailingButtonIconSizeFor(height)),
+                    )
+                }
+            },
+        )
+        Surface(
+            onClick = {
+                HapticUtil.performVirtualKeyHaptic(view)
+                onShare()
+            },
+            shape = CircleShape,
+            color = palette.card,
+            contentColor = palette.accent,
+            modifier = Modifier.size(height),
+        ) {
+            Box(contentAlignment = Alignment.Center) {
+                Icon(painterResource(R.drawable.rounded_share_24), contentDescription = stringResource(R.string.share_action), modifier = Modifier.size(22.dp))
             }
-        },
-        trailingButton = {
-            SplitButtonDefaults.TrailingButton(
-                onClick = {
-                    HapticUtil.performVirtualKeyHaptic(view)
-                    onOpenSettings()
-                },
-                shapes = SplitButtonDefaults.trailingButtonShapesFor(height),
-                colors = colors,
-                contentPadding = SplitButtonDefaults.trailingButtonContentPaddingFor(height),
-            ) {
-                Icon(
-                    painter = painterResource(R.drawable.rounded_settings_24),
-                    contentDescription = stringResource(R.string.weather_open_settings),
-                    tint = palette.accent,
-                    modifier = Modifier.size(SplitButtonDefaults.trailingButtonIconSizeFor(height)),
-                )
-            }
-        },
-    )
+        }
+    }
 }
 
 @Composable

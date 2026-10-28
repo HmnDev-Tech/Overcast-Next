@@ -157,6 +157,7 @@
     <string name="weather_place_remove_saved">Remove from saved</string>
     <string name="weather_place_remove_recent">Remove</string>
     <string name="weather_choose_location">Choose a location</string>
+    <string name="share_action">Share</string>
     <string name="map_layer_rain">Rain</string>
     <string name="map_layer_temperature">Temperature</string>
     <string name="map_layer_clouds">Clouds</string>

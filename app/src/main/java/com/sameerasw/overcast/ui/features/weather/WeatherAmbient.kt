@@ -105,27 +105,7 @@ internal fun BoxScope.WeatherSkyBackground(
 
 @Composable
 private fun LocationScene(snapshot: WeatherSnapshot?, palette: WeatherPalette, collapse: () -> Float) {
-    val context = LocalContext.current
-    val settings = remember { SettingsRepository(context) }
-    var settingsVersion by remember { mutableIntStateOf(0) }
-    DisposableEffect(settings) {
-        val listener = SharedPreferences.OnSharedPreferenceChangeListener { _, _ -> settingsVersion++ }
-        settings.registerChangeListener(listener)
-        onDispose { settings.unregisterChangeListener(listener) }
-    }
-    val enabled = remember(settingsVersion) { settings.isLocationSceneEnabled() }
-    val simulated = remember(settingsVersion) { settings.getSimulatedScene()?.let { id -> SceneType.entries.firstOrNull { it.name == id } } }
-    val scene by produceState<SceneType?>(null, snapshot?.locationName, enabled, simulated) {
-        value = null
-        if (!enabled) return@produceState
-        if (simulated != null) {
-            value = simulated
-            return@produceState
-        }
-        if (snapshot == null) return@produceState
-        val location = WeatherRepository.lastKnownLocation(context) ?: return@produceState
-        value = SceneRepository.sceneFor(context, location.latitude, location.longitude, snapshot.locationName)
-    }
+    val scene = rememberLocationScene(snapshot)
     Crossfade(scene, animationSpec = tween(1200), label = "locationScene") { type ->
         if (type == null) return@Crossfade
         Box(Modifier.fillMaxWidth().height(SKY_HEIGHT + SCENE_DROP)) {
@@ -151,13 +131,39 @@ private fun LocationScene(snapshot: WeatherSnapshot?, palette: WeatherPalette, c
     }
 }
 
+@Composable
+internal fun rememberLocationScene(snapshot: WeatherSnapshot?): SceneType? {
+    val context = LocalContext.current
+    val settings = remember { SettingsRepository(context) }
+    var settingsVersion by remember { mutableIntStateOf(0) }
+    DisposableEffect(settings) {
+        val listener = SharedPreferences.OnSharedPreferenceChangeListener { _, _ -> settingsVersion++ }
+        settings.registerChangeListener(listener)
+        onDispose { settings.unregisterChangeListener(listener) }
+    }
+    val enabled = remember(settingsVersion) { settings.isLocationSceneEnabled() }
+    val simulated = remember(settingsVersion) { settings.getSimulatedScene()?.let { id -> SceneType.entries.firstOrNull { it.name == id } } }
+    val scene by produceState<SceneType?>(null, snapshot?.locationName, enabled, simulated) {
+        value = null
+        if (!enabled) return@produceState
+        if (simulated != null) {
+            value = simulated
+            return@produceState
+        }
+        if (snapshot == null) return@produceState
+        val location = WeatherRepository.lastKnownLocation(context) ?: return@produceState
+        value = SceneRepository.sceneFor(context, location.latitude, location.longitude, snapshot.locationName)
+    }
+    return scene
+}
+
 private const val SCENE_ALPHA = 0.85f
 private val SCENE_DROP = 90.dp
 
-private fun sceneTint(palette: WeatherPalette): Color =
+internal fun sceneTint(palette: WeatherPalette): Color =
     if (palette.glow.luminance() < 0.03f) lerp(palette.glow, palette.accent, 0.2f) else palette.base
 
-private val SceneType.drawableRes: Int
+internal val SceneType.drawableRes: Int
     get() = when (this) {
         SceneType.CITY -> R.drawable.scene_city
         SceneType.COASTAL_CITY -> R.drawable.scene_coastal_city
