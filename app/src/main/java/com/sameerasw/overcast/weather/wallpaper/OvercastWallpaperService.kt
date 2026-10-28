@@ -66,6 +66,7 @@ class OvercastWallpaperService : WallpaperService() {
         private var lastFrame = 0L
         private var zoom = 1f
         private var zoomVelocity = 0f
+        private var systemZoom = 0f
 
         private val keyguard = getSystemService(KeyguardManager::class.java)
         private var locked = false
@@ -156,6 +157,11 @@ class OvercastWallpaperService : WallpaperService() {
             }
         }
 
+        override fun onZoomChanged(zoom: Float) {
+            systemZoom = zoom.coerceIn(0f, 1f)
+            if (!visible) drawFrame()
+        }
+
         override fun onOffsetsChanged(xOffset: Float, yOffset: Float, xOffsetStep: Float, yOffsetStep: Float, xPixelOffset: Int, yPixelOffset: Int) {
             offsetX = xOffset
         }
@@ -214,7 +220,7 @@ class OvercastWallpaperService : WallpaperService() {
             advanceZoom(dt)
             val presentation = present(now)
             val palette = presentation.palette
-            val intro = zoom
+            val intro = zoom * (1f - systemZoom * OVERLAY_DEPTH)
 
             skyPaint.shader = LinearGradient(
                 0f, 0f, 0f, height,
@@ -287,6 +293,7 @@ class OvercastWallpaperService : WallpaperService() {
         const val SCENE_ALPHA = 0.85f
         const val PARALLAX = 0.06f
         const val LOCKED_ZOOM = 0.55f
+        const val OVERLAY_DEPTH = 0.6f
         const val ZOOM_STIFFNESS = 22f
         const val SKY_START_SCALE = 1.35f
         const val SCENE_START_SCALE = 0.9f
