@@ -152,6 +152,29 @@ half4 main(float2 p) {
                 float ym = mergeY(sN, travel, offset);
                 float grow = smoothstep(ym - 30.0 * density, ym + 40.0 * density, y);
                 float rr = r * mix(0.62, 1.0, grow);
+                float above = y - p.y;
+                float trailLen = 300.0 * density;
+                if (above > rr && above < trailLen && p.y > -offset) {
+                    float age = above / trailLen;
+                    float seg = p.y / (7.0 * density);
+                    float segId = floor(seg);
+                    float n0 = hash11(sN * 13.1 + segId * 1.37);
+                    float n1 = hash11(sN * 13.1 + (segId + 1.0) * 1.37);
+                    float noise = mix(n0, n1, smoothstep(0.0, 1.0, fract(seg)));
+                    float bead = smoothstep(0.12, 0.45, noise) * (0.45 + 0.75 * noise) * (0.8 + 0.2 * sin(p.y * 0.05 / density + sN * 3.0));
+                    float tw = rr * 0.55 * (1.0 - 0.55 * age) * bead;
+                    float jitter = (hash11(sN * 5.9 + segId * 2.71) - 0.5) * rr * 0.12;
+                    float tx = p.x - pathX(p.y, sN, col, colW, travel, offset, density, slant) - jitter;
+                    if (abs(tx) < tw) {
+                        float d = tx / tw;
+                        float w = 1.0 - d * d;
+                        float fade = (1.0 - age) * (1.0 - age) * smoothstep(rr, rr * 2.5, above);
+                        h += w * fade * 0.9;
+                        g.x += -9.0 * w * d * tw * fade;
+                        float cw = min(1.0, w * 4.0) * fade;
+                        s += float3(d * cw, 0.0, cw);
+                    }
+                }
                 if (p.y > y - 3.6 * rr && p.y < y + 1.1 * rr) {
                     float x = pathX(y, sN, col, colW, travel, offset, density, slant);
                     float v = 1.5 + 0.4 * w1 * cos(w1 * time + s1) + 0.18 * w2 * cos(w2 * time + s2);
