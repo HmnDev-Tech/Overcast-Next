@@ -311,6 +311,55 @@ fun WeatherEffects(
     }
 }
 
+class WeatherEffectsRenderer {
+    private val states = mutableListOf<LayerState>()
+    private val snowState = SnowState()
+    private var spec: WeatherEffectSpec? = null
+    private var clock = 0f
+
+    fun update(next: WeatherEffectSpec) {
+        if (next == spec) return
+        reconcile(states, next, animateIn = spec != null, now = clock)
+        spec = next
+    }
+
+    fun draw(scope: DrawScope, t: Float, dt: Float, strength: Float) {
+        clock = t
+        advance(states, dt)
+        with(scope) {
+            states.forEach { state ->
+                if (state.falling || state.layer is WeatherEffectLayer.Lightning) return@forEach
+                val layer = state.current()
+                val fade = strength * state.level
+                when (layer) {
+                    is WeatherEffectLayer.Clouds -> drawClouds(state, t, layer.intensity, fade, fog = false)
+                    is WeatherEffectLayer.Fog -> drawClouds(state, t, layer.intensity, fade, fog = true)
+                    is WeatherEffectLayer.SunGlow -> drawSunGlow(state, t, layer.intensity, fade)
+                    is WeatherEffectLayer.Stars -> drawStars(state.field, t, layer.intensity, fade)
+                    else -> Unit
+                }
+            }
+            states.forEach { state ->
+                val layer = state.current()
+                val fade = strength * state.level
+                when (layer) {
+                    is WeatherEffectLayer.Rain -> {
+                        val target = state.layer as WeatherEffectLayer.Rain
+                        val ratio = (0.12f + 0.2f * layer.intensity) / (0.12f + 0.2f * target.intensity)
+                        drawRain(state, target.copy(slant = layer.slant), t + state.timeOffset, fade * ratio, emptyList())
+                    }
+                    is WeatherEffectLayer.Snow -> drawSnow(state.field, t, layer.intensity, fade, emptyList(), snowState)
+                    is WeatherEffectLayer.Hail -> drawHail(state, layer.intensity, t, fade)
+                    else -> Unit
+                }
+            }
+            states.forEach { state ->
+                if (state.layer is WeatherEffectLayer.Lightning) drawLightning(t, state.intensity, strength * state.level)
+            }
+        }
+    }
+}
+
 private fun Modifier.clearTopMask(clearTop: Dp): Modifier = drawWithContent {
     drawContent()
     val top = clearTop.toPx().coerceAtMost(size.height)

@@ -1,5 +1,6 @@
 package com.sameerasw.overcast.ui.features.weather
 
+import androidx.compose.ui.graphics.drawscope.DrawScope
 import android.content.Intent
 import android.net.Uri
 import java.util.Calendar
@@ -850,30 +851,33 @@ internal fun SkyBody(snapshot: WeatherSnapshot, now: () -> Long, collapse: () ->
             .height(SKY_HEIGHT)
             .graphicsLayer { translationY = -collapse() * 60.dp.toPx() },
     ) {
-        val time = now()
-        val (t, isSun) = skyState(snapshot, time) ?: return@Canvas
-        val color = if (isSun) Color(0xFFFFE2A8) else Color(0xFFE6ECFF)
-        val moonPhase = snapshot.moonPhaseAt(time)
-        val shown = t * rise()
-        val horizonFade = (minOf(shown, 1f - shown) / 0.1f).coerceIn(0f, 1f)
-        val x = size.width * (0.9f - 0.8f * shown)
-        val y = size.height * 0.66f - size.height * 0.4f * kotlin.math.sin(Math.PI.toFloat() * shown)
-        val alpha = 0.5f * hide * horizonFade
-        val glowRadius = 110.dp.toPx()
-        drawCircle(
-            brush = Brush.radialGradient(
-                colors = listOf(color.copy(alpha = alpha * 0.55f), Color.Transparent),
-                center = Offset(x, y),
-                radius = glowRadius,
-            ),
-            radius = glowRadius,
+        drawSkyBody(snapshot, now(), hide, rise())
+    }
+}
+
+internal fun DrawScope.drawSkyBody(snapshot: WeatherSnapshot, time: Long, hide: Float = 1f, rise: Float = 1f) {
+    val (t, isSun) = skyState(snapshot, time) ?: return
+    val color = if (isSun) Color(0xFFFFE2A8) else Color(0xFFE6ECFF)
+    val moonPhase = snapshot.moonPhaseAt(time)
+    val shown = t * rise
+    val horizonFade = (minOf(shown, 1f - shown) / 0.1f).coerceIn(0f, 1f)
+    val x = size.width * (0.9f - 0.8f * shown)
+    val y = size.height * 0.66f - size.height * 0.4f * kotlin.math.sin(Math.PI.toFloat() * shown)
+    val alpha = 0.5f * hide * horizonFade
+    val glowRadius = 110.dp.toPx()
+    drawCircle(
+        brush = Brush.radialGradient(
+            colors = listOf(color.copy(alpha = alpha * 0.55f), Color.Transparent),
             center = Offset(x, y),
-        )
-        if (isSun) {
-            drawCircle(color.copy(alpha = alpha * 0.7f), radius = 20.dp.toPx(), center = Offset(x, y))
-        } else {
-            drawMoonPhase(Offset(x, y), 20.dp.toPx(), moonPhase, color, litAlpha = alpha * 0.8f, darkAlpha = alpha * 0.16f)
-        }
+            radius = glowRadius,
+        ),
+        radius = glowRadius,
+        center = Offset(x, y),
+    )
+    if (isSun) {
+        drawCircle(color.copy(alpha = alpha * 0.7f), radius = 20.dp.toPx(), center = Offset(x, y))
+    } else {
+        drawMoonPhase(Offset(x, y), 20.dp.toPx(), moonPhase, color, litAlpha = alpha * 0.8f, darkAlpha = alpha * 0.16f)
     }
 }
 

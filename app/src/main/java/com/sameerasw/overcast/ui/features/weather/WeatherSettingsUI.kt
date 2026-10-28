@@ -9,6 +9,9 @@
 
 package com.sameerasw.overcast.ui.features.weather
 
+import android.app.WallpaperManager
+import android.content.ComponentName
+import com.sameerasw.overcast.weather.wallpaper.OvercastWallpaperService
 import android.Manifest
 import android.os.Build
 import android.text.format.DateFormat
@@ -676,6 +679,18 @@ fun WeatherSettingsUI(
 
             SectionTitle(R.string.weather_section_screensaver)
             RoundedCardContainer(spacing = 2.dp, cornerRadius = 24.dp) {
+                IconToggleItem(
+                    iconRes = R.drawable.rounded_landscape_24,
+                    title = stringResource(R.string.wallpaper_set),
+                    showToggle = false,
+                    onClick = {
+                        HapticUtil.performVirtualKeyHaptic(view)
+                        val preview = Intent(WallpaperManager.ACTION_CHANGE_LIVE_WALLPAPER)
+                            .putExtra(WallpaperManager.EXTRA_LIVE_WALLPAPER_COMPONENT, ComponentName(context, OvercastWallpaperService::class.java))
+                        runCatching { context.startActivity(preview) }
+                            .onFailure { runCatching { context.startActivity(Intent(WallpaperManager.ACTION_LIVE_WALLPAPER_CHOOSER)) } }
+                    },
+                )
                 IconToggleItem(
                     iconRes = R.drawable.rounded_dashboard_24,
                     title = stringResource(R.string.screensaver_show_forecast),
