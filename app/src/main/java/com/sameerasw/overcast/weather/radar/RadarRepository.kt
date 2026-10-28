@@ -64,6 +64,7 @@ object RadarRepository {
     private const val GRID = 1
     private const val BASE_ZOOM_STEP = 1
     private const val LOOP_FRAMES = 6
+    private const val EXTRA_ROWS = 1
 
     private val _status = MutableStateFlow<RadarStatus?>(null)
     val status: StateFlow<RadarStatus?> = _status.asStateFlow()
@@ -140,7 +141,7 @@ object RadarRepository {
         val satelliteDate = LocalDate.now(ZoneOffset.UTC).minusDays(1)
         val satelliteTiles = mutableListOf<MapTile>()
         val baseTiles = buildList {
-            for (by in 0 until (GRID * 2 + 1) * split) for (bx in 0 until (GRID * 2 + 1) * split) {
+            for (by in -EXTRA_ROWS * split until (GRID * 2 + 1 + EXTRA_ROWS) * split) for (bx in 0 until (GRID * 2 + 1) * split) {
                 val ty = (tileY - GRID) * split + by
                 if (ty !in 0 until baseN) continue
                 val tx = Math.floorMod((tileX - GRID) * split + bx, baseN)

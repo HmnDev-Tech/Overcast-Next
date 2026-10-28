@@ -101,6 +101,7 @@ import androidx.compose.material3.carousel.HorizontalMultiBrowseCarousel
 import androidx.compose.material3.carousel.rememberCarouselState
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.height
+import androidx.compose.runtime.SideEffect
 import kotlin.math.PI
 import kotlin.math.cos
 import kotlin.math.roundToInt
@@ -190,7 +191,7 @@ fun RadarSection(snapshot: WeatherSnapshot, units: WeatherUnits, palette: Weathe
 
     fun close() {
         scope.launch {
-            progress.animateTo(0f, spring(dampingRatio = 0.9f, stiffness = Spring.StiffnessMediumLow))
+            progress.animateTo(0f, spring(dampingRatio = Spring.DampingRatioNoBouncy, stiffness = Spring.StiffnessMediumLow))
             fullscreen = false
             host?.content = null
         }
@@ -213,7 +214,7 @@ fun RadarSection(snapshot: WeatherSnapshot, units: WeatherUnits, palette: Weathe
     PredictiveBackHandler(enabled = fullscreen) { events ->
         try {
             events.collect { event -> progress.snapTo(1f - event.progress * BACK_SHRINK) }
-            progress.animateTo(0f, spring(dampingRatio = 0.9f, stiffness = Spring.StiffnessMediumLow))
+            progress.animateTo(0f, spring(dampingRatio = Spring.DampingRatioNoBouncy, stiffness = Spring.StiffnessMediumLow))
             fullscreen = false
             host?.content = null
         } catch (e: CancellationException) {
@@ -233,7 +234,7 @@ fun RadarSection(snapshot: WeatherSnapshot, units: WeatherUnits, palette: Weathe
     ) {
         val radar = shownMap.value ?: return@AnimatedVisibility
         val view = LocalView.current
-        RoundedCardContainer(Modifier.rainSurface("radar"), spacing = 2.dp, cornerRadius = 28.dp) {
+        RoundedCardContainer(Modifier.rainSurface("radar"), spacing = 2.dp, cornerRadius = CARD_BOTTOM_CORNER) {
             Surface(color = palette.card, shape = MaterialTheme.shapes.extraSmall, modifier = Modifier.fillMaxWidth()) {
                 Row(Modifier.padding(end = 8.dp), verticalAlignment = Alignment.CenterVertically) {
                     ModeCarousel(availableLayers(radar, grid), ui.layer, palette, Modifier.weight(1f)) {
@@ -262,7 +263,7 @@ fun RadarSection(snapshot: WeatherSnapshot, units: WeatherUnits, palette: Weathe
                 Modifier
                     .fillMaxWidth()
                     .aspectRatio(1.4f)
-                    .clip(MaterialTheme.shapes.extraSmall)
+                    .clip(RoundedCornerShape(CARD_TOP_CORNER))
                     .background(MAP_BACKGROUND)
                     .onGloballyPositioned { cardBounds.value = it.boundsInRoot() },
             ) {
@@ -281,6 +282,7 @@ internal val LocalMapFullscreenHost = staticCompositionLocalOf<MapFullscreenHost
 
 private class MapUiState {
     var layer by mutableStateOf(MapLayer.WIND)
+    var unitPx = 0f
 }
 
 private const val BACK_SHRINK = 0.3f
@@ -319,7 +321,10 @@ private fun FullscreenMap(
                     layout(constraints.maxWidth, constraints.maxHeight) { placeable.place(left.roundToInt(), top.roundToInt()) }
                 }
                 .graphicsLayer {
-                    shape = RoundedCornerShape(lerp(FULLSCREEN_CORNER.toPx(), 0f, progress().coerceIn(0f, 1f)))
+                    val p = progress().coerceIn(0f, 1f)
+                    val top = lerp(CARD_TOP_CORNER.toPx(), 0f, p)
+                    val bottom = lerp(CARD_BOTTOM_CORNER.toPx(), 0f, p)
+                    shape = RoundedCornerShape(topStart = top, topEnd = top, bottomStart = bottom, bottomEnd = bottom)
                     clip = true
                 }
                 .background(MAP_BACKGROUND),
@@ -345,7 +350,8 @@ private fun FullscreenMap(
     }
 }
 
-private val FULLSCREEN_CORNER = 28.dp
+private val CARD_TOP_CORNER = 4.dp
+private val CARD_BOTTOM_CORNER = 28.dp
 
 @Composable
 private fun ModeCarousel(
@@ -391,7 +397,6 @@ private fun ModeCarousel(
 }
 
 private const val RADAR_TILES_ACROSS = 1.2f
-private const val CARD_ASPECT = 1.4f
 private const val MAX_RADAR_ZOOM = 4f
 private const val DOUBLE_TAP_ZOOM = 2.5f
 private const val LOOP_FRAME_MS = 600L
@@ -481,7 +486,6 @@ private fun MapView(
         val next = pan + panChange
         pan = Offset(next.x.coerceIn(-limitX, limitX), next.y.coerceIn(-limitY, limitY))
     }
-    val zoomedOut = scale <= 1.01f
     BoxWithConstraints(
         modifier
             .background(MAP_BACKGROUND)
@@ -515,7 +519,9 @@ private fun MapView(
     ) {
         halfSize[0] = constraints.maxWidth / 2f
         halfSize[1] = constraints.maxHeight / 2f
-        val unitPx = maxOf(constraints.maxWidth.toFloat(), constraints.maxHeight * CARD_ASPECT) / RADAR_TILES_ACROSS
+        val cardUnitPx = constraints.maxWidth / RADAR_TILES_ACROSS
+        val unitPx = if (expanded && ui.unitPx > 0f) ui.unitPx else cardUnitPx
+        SideEffect { if (!expanded) ui.unitPx = cardUnitPx }
         val originX = constraints.maxWidth / 2f - unitPx * radar.centerX
         val originY = constraints.maxHeight / 2f - unitPx * radar.centerY
         Box(
@@ -531,11 +537,15 @@ private fun MapView(
         ) {
             if (layer == MapLayer.SATELLITE) {
                 radar.satelliteTiles.forEach { tile ->
-                    MapTileImage(tile, unitPx, originX, originY, density, SatelliteFilter, 1f, context)
+                    if (expanded || tile.y + tile.size > 0f && tile.y < radar.gridTiles) {
+                        MapTileImage(tile, unitPx, originX, originY, density, SatelliteFilter, 1f, context)
+                    }
                 }
             } else {
                 radar.baseTiles.forEach { tile ->
-                    MapTileImage(tile, unitPx, originX, originY, density, BaseMapFilter, 1f, context)
+                    if (expanded || tile.y + tile.size > 0f && tile.y < radar.gridTiles) {
+                        MapTileImage(tile, unitPx, originX, originY, density, BaseMapFilter, 1f, context)
+                    }
                 }
             }
             if (layer == MapLayer.RAIN) {
@@ -564,7 +574,7 @@ private fun MapView(
                 .border(2.dp, Color.White, CircleShape),
         )
         val direction = snapshot.extras?.windDirectionDeg
-        val windAlpha by animateFloatAsState(if (layer.showsWind && zoomedOut) 1f else 0f, label = "windAlpha")
+        val windAlpha by animateFloatAsState(if (layer.showsWind) 1f else 0f, label = "windAlpha")
         if (windAlpha > 0f) {
             if (direction != null && snapshot.windKph > 0.5) {
                 WindParticles(direction, snapshot.windKph, { rotation }, Modifier.matchParentSize().graphicsLayer { alpha = windAlpha })
