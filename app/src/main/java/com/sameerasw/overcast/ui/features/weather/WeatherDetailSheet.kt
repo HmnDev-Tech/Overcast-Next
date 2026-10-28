@@ -1,5 +1,12 @@
 package com.sameerasw.overcast.ui.features.weather
 
+import android.content.Intent
+import android.net.Uri
+import java.util.Calendar
+import com.sameerasw.overcast.weather.sky.AuroraForecast
+import com.sameerasw.overcast.weather.sky.SkyEvent
+import com.sameerasw.overcast.weather.sky.SkyEvents
+import kotlinx.coroutines.CancellationException
 import androidx.compose.runtime.mutableStateMapOf
 import android.content.Context
 import com.sameerasw.overcast.weather.effects.WeatherEffectHaptics
@@ -602,6 +609,7 @@ fun WeatherScreen(onOpenSettings: () -> Unit = {}) {
                                         if (MainSection.RIVER in visibleSections) RiverSection(state.snapshot ?: snapshot, palette, Modifier.padding(horizontal = SIDE_PADDING))
                                         if (MainSection.HISTORY in visibleSections) HistorySection(state.snapshot ?: snapshot, units, palette, Modifier.padding(horizontal = SIDE_PADDING))
                                         if (MainSection.SUN in visibleSections) SunSection(snapshot, palette, Modifier.padding(horizontal = SIDE_PADDING))
+                                        if (MainSection.SKY_EVENTS in visibleSections) SkyEventsSection(snapshot, palette, Modifier.padding(horizontal = SIDE_PADDING))
                                         if (MainSection.PLACES in visibleSections) PlacesSection(snapshot, units, palette, ::selectPlace, Modifier.padding(horizontal = SIDE_PADDING))
                                         Footer(
                                             modifier = Modifier.padding(horizontal = SIDE_PADDING).rainSurface("footer"),
@@ -654,6 +662,7 @@ fun WeatherScreen(onOpenSettings: () -> Unit = {}) {
                                                 val live = state.snapshot ?: snapshot
                                                 when (section) {
                                                     MainSection.SUN -> SunSection(snapshot, palette, sectionModifier)
+                                                    MainSection.SKY_EVENTS -> SkyEventsSection(snapshot, palette, sectionModifier)
                                                     MainSection.HISTORY -> HistorySection(live, units, palette, sectionModifier)
                                                     MainSection.ACTIVITIES -> ActivitySection(snapshot, units, palette, sectionModifier)
                                                     MainSection.INSIGHTS -> InsightsSection(live, units, palette, sectionModifier)
@@ -899,6 +908,7 @@ internal val SIDE_PADDING = 20.dp
 private val BALANCED_SECTIONS = listOf(
     MainSection.ACTIVITIES,
     MainSection.SUN,
+    MainSection.SKY_EVENTS,
     MainSection.INSIGHTS,
     MainSection.RADAR,
     MainSection.AIR_QUALITY,
@@ -1449,6 +1459,82 @@ private fun SunSection(snapshot: WeatherSnapshot, palette: WeatherPalette, modif
         }
     }
 }
+
+@Composable
+private fun SkyEventsSection(snapshot: WeatherSnapshot, palette: WeatherPalette, modifier: Modifier) {
+    val context = LocalContext.current
+    val now by rememberMinuteClock()
+    val location = remember(snapshot.updatedAt) { WeatherRepository.lastFetchLocation() }
+    val auroraKp by produceState(emptyList<Pair<Long, Double>>(), location) {
+        if (location == null || abs(location.latitude) < AURORA_MIN_LATITUDE) return@produceState
+        value = try {
+            AuroraForecast.kpForecast()
+        } catch (e: CancellationException) {
+            throw e
+        } catch (_: Exception) {
+            emptyList()
+        }
+    }
+    val events = remember(snapshot, location, auroraKp, now / (60 * 60_000L)) {
+        SkyEvents.upcoming(context, snapshot, location?.latitude, auroraKp, now)
+    }
+    if (events.isEmpty()) return
+    RoundedCardContainer(modifier = modifier.rainSurface("sky_events"), spacing = 2.dp, cornerRadius = 28.dp) {
+        events.forEach { SkyEventRow(it, palette, now) }
+    }
+}
+
+@Composable
+private fun SkyEventRow(event: SkyEvent, palette: WeatherPalette, now: Long) {
+    val context = LocalContext.current
+    val view = LocalView.current
+    val title = event.name?.let { stringResource(event.titleRes, it) } ?: stringResource(event.titleRes)
+    val past = event.timeMillis < now - 60 * 60_000L
+    val day = SimpleDateFormat("EEE d MMM", Locale.getDefault()).format(Date(event.timeMillis))
+    val relative = if (abs(event.timeMillis - now) < 60 * 60_000L) {
+        stringResource(R.string.sky_now)
+    } else {
+        DateUtils.getRelativeTimeSpanString(event.timeMillis, now, DateUtils.DAY_IN_MILLIS).toString()
+    }
+    val detail = listOfNotNull(event.detailRes?.let { context.getString(it) }, event.detail).takeIf { !past }.orEmpty()
+    val year = Calendar.getInstance().apply { timeInMillis = event.timeMillis }.get(Calendar.YEAR)
+    Surface(color = palette.card, shape = MaterialTheme.shapes.extraSmall, modifier = Modifier.fillMaxWidth()) {
+        Row(
+            Modifier
+                .fillMaxWidth()
+                .then(
+                    if (event.searchable) {
+                        Modifier.clickable {
+                            HapticUtil.performVirtualKeyHaptic(view)
+                            val query = Uri.encode("$title $year")
+                            context.startActivity(Intent(Intent.ACTION_VIEW, Uri.parse("https://www.google.com/search?q=$query")))
+                        }
+                    } else {
+                        Modifier
+                    },
+                )
+                .graphicsLayer { alpha = if (past) 0.4f else 1f }
+                .padding(horizontal = 20.dp, vertical = 16.dp),
+            verticalAlignment = Alignment.CenterVertically,
+            horizontalArrangement = Arrangement.spacedBy(16.dp),
+        ) {
+            Icon(painterResource(event.kind.iconRes), contentDescription = null, tint = if (past) palette.onBaseMuted else palette.accent, modifier = Modifier.size(22.dp))
+            Column(Modifier.weight(1f)) {
+                Text(title, color = palette.onBase, style = MaterialTheme.typography.titleSmall)
+                Text(
+                    (listOf("$relative · $day") + detail).joinToString(" · "),
+                    color = palette.onBaseMuted,
+                    style = MaterialTheme.typography.bodySmall,
+                )
+            }
+            if (event.searchable && !past) {
+                Icon(painterResource(R.drawable.rounded_arrow_outward_24), contentDescription = null, tint = palette.onBaseMuted, modifier = Modifier.size(18.dp))
+            }
+        }
+    }
+}
+
+private const val AURORA_MIN_LATITUDE = 44.0
 
 @Composable
 private fun MoonTile(phase: Double, palette: WeatherPalette, modifier: Modifier) {

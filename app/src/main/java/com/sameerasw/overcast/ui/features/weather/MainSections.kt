@@ -24,6 +24,7 @@ enum class MainSection(val key: String, val iconRes: Int, val titleRes: Int) {
     HISTORY("section_history", R.drawable.rounded_history_24, R.string.history_title),
     PLACES("section_places", R.drawable.rounded_location_city_24, R.string.places_title),
     SUN("section_sun", R.drawable.rounded_wb_sunny_24, R.string.section_sun),
+    SKY_EVENTS("section_sky_events", R.drawable.rounded_auto_awesome_24, R.string.sky_events_title),
 }
 
 @Composable
