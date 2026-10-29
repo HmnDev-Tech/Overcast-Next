@@ -47,20 +47,16 @@ class SettingsRepository(
         const val KEY_WEATHER_REFRESH_MINUTES = "weather_refresh_minutes"
         const val KEY_WEATHER_EFFECTS = "weather_effects"
         const val KEY_WEATHER_HAPTICS = "weather_haptics"
-        const val KEY_LOCATION_SCENE = "location_scene"
+        const val KEY_ALLERGEN_CARD = "allergen_card"
+        const val KEY_MAP_DEFAULT_LAYER = "map_default_layer"
+        const val KEY_MAP_ANIMATE_RADAR = "map_animate_radar"
+        const val KEY_ISLAND_STYLE = "island_style"
+        const val KEY_ISLAND_HOURLY = "island_hourly"
+        const val KEY_WIDGET_EXPRESSIVE_ANIMATE = "widget_expressive_animate"
         const val KEY_AI_PROVIDER = "ai_provider"
         const val KEY_AI_API_KEY = "ai_api_key"
         const val KEY_AI_MODEL = "ai_model"
         const val KEY_AI_BASE_URL = "ai_base_url"
-        const val KEY_AQI_PROVIDER = "aqi_provider"
-        const val KEY_RADAR_PROVIDER = "radar_provider"
-        const val KEY_MORNING_SUMMARY = "morning_summary"
-        const val KEY_MORNING_SUMMARY_HOUR = "morning_summary_hour"
-        const val KEY_RAIN_ALERT = "rain_alert"
-        const val KEY_SKY_ALERT = "sky_alert"
-        const val KEY_WALLPAPER_SMOOTH = "wallpaper_smooth"
-        const val KEY_WALLPAPER_EFFECTS = "wallpaper_effects"
-        const val KEY_LAST_RAIN_ALERT = "last_rain_alert"
         const val KEY_DEBUG_SIMULATED_WEATHER = "debug_simulated_weather"
         const val KEY_DEBUG_SIMULATED_ALERT = "debug_simulated_alert"
         const val KEY_DEBUG_SIMULATED_TIME = "debug_simulated_time"
@@ -119,6 +115,26 @@ class SettingsRepository(
 
     fun isWeatherHapticsEnabled(): Boolean = getBoolean(KEY_WEATHER_HAPTICS, true)
     fun setWeatherHapticsEnabled(enabled: Boolean) = putBoolean(KEY_WEATHER_HAPTICS, enabled)
+
+    fun isAllergenCardEnabled(): Boolean = getBoolean(KEY_ALLERGEN_CARD, true)
+    fun setAllergenCardEnabled(enabled: Boolean) = putBoolean(KEY_ALLERGEN_CARD, enabled)
+
+    // Map layers: "precipitation", "temperature" or "satellite".
+    fun getMapDefaultLayer(): String = getString(KEY_MAP_DEFAULT_LAYER, "precipitation") ?: "precipitation"
+    fun setMapDefaultLayer(layer: String) = putString(KEY_MAP_DEFAULT_LAYER, layer)
+
+    fun isMapAnimateRadarEnabled(): Boolean = getBoolean(KEY_MAP_ANIMATE_RADAR, true)
+    fun setMapAnimateRadarEnabled(enabled: Boolean) = putBoolean(KEY_MAP_ANIMATE_RADAR, enabled)
+
+    // Island presentation: "auto", "pill" (large, iPhone style), "compact" or "minimal" (punch hole).
+    fun getIslandStyle(): String = getString(KEY_ISLAND_STYLE, "auto") ?: "auto"
+    fun setIslandStyle(style: String) = putString(KEY_ISLAND_STYLE, style)
+
+    fun isIslandHourlyEnabled(): Boolean = getBoolean(KEY_ISLAND_HOURLY, true)
+    fun setIslandHourlyEnabled(enabled: Boolean) = putBoolean(KEY_ISLAND_HOURLY, enabled)
+
+    fun isWidgetExpressiveAnimationEnabled(): Boolean = getBoolean(KEY_WIDGET_EXPRESSIVE_ANIMATE, true)
+    fun setWidgetExpressiveAnimationEnabled(enabled: Boolean) = putBoolean(KEY_WIDGET_EXPRESSIVE_ANIMATE, enabled)
 
     fun getWeatherProvider(): String? = getString(KEY_WEATHER_PROVIDER, null)
     fun setWeatherProvider(id: String) = putString(KEY_WEATHER_PROVIDER, id)
@@ -229,13 +245,8 @@ class SettingsRepository(
 
     fun aiApiKeyName(providerId: String) = "${KEY_AI_API_KEY}_$providerId"
 
-    fun getAiProvider(): String = getString(KEY_AI_PROVIDER, AiProviders.OFF_ID) ?: AiProviders.OFF_ID
+    fun getAiProvider(): String = getString(KEY_AI_PROVIDER, "gemini") ?: "gemini"
     fun setAiProvider(id: String) = putString(KEY_AI_PROVIDER, id)
-
-    fun isAiAdviceAvailable(): Boolean {
-        val provider = AiProviders.byId(getAiProvider())
-        return !provider.isOff && (!provider.requiresApiKey || getAiApiKey(provider.id) != null)
-    }
 
     fun getAiApiKey(providerId: String): String? =
         getString(aiApiKeyName(providerId), null)?.takeIf { it.isNotBlank() }
@@ -251,31 +262,4 @@ class SettingsRepository(
         getString("${KEY_AI_BASE_URL}_$providerId", null)?.takeIf { it.isNotBlank() }
 
     fun setAiBaseUrl(providerId: String, url: String?) = putString("${KEY_AI_BASE_URL}_$providerId", url?.trim().orEmpty())
-
-    fun getAqiProvider(): String = getString(KEY_AQI_PROVIDER, AqiProviders.OPEN_METEO_ID) ?: AqiProviders.OPEN_METEO_ID
-    fun setAqiProvider(id: String) = putString(KEY_AQI_PROVIDER, id)
-
-    fun isMainSectionVisible(section: MainSection): Boolean = getBoolean(section.key, true)
-    fun setMainSectionVisible(section: MainSection, visible: Boolean) = putBoolean(section.key, visible)
-
-    fun isMorningSummaryEnabled(): Boolean = getBoolean(KEY_MORNING_SUMMARY, false)
-    fun setMorningSummaryEnabled(enabled: Boolean) = putBoolean(KEY_MORNING_SUMMARY, enabled)
-    fun getMorningSummaryHour(): Int = getInt(KEY_MORNING_SUMMARY_HOUR, 7)
-    fun setMorningSummaryHour(hour: Int) = putInt(KEY_MORNING_SUMMARY_HOUR, hour)
-    fun isRainAlertEnabled(): Boolean = getBoolean(KEY_RAIN_ALERT, false)
-    fun setRainAlertEnabled(enabled: Boolean) = putBoolean(KEY_RAIN_ALERT, enabled)
-    fun isWallpaperEffectsEnabled(): Boolean = getBoolean(KEY_WALLPAPER_EFFECTS, true)
-    fun setWallpaperEffectsEnabled(enabled: Boolean) = putBoolean(KEY_WALLPAPER_EFFECTS, enabled)
-
-    fun isWallpaperSmoothEnabled(): Boolean = getBoolean(KEY_WALLPAPER_SMOOTH, false)
-    fun setWallpaperSmoothEnabled(enabled: Boolean) = putBoolean(KEY_WALLPAPER_SMOOTH, enabled)
-
-    fun isSkyAlertEnabled(): Boolean = getBoolean(KEY_SKY_ALERT, false)
-    fun setSkyAlertEnabled(enabled: Boolean) = putBoolean(KEY_SKY_ALERT, enabled)
-
-    fun getLastRainAlertMillis(): Long = prefs.getLong(KEY_LAST_RAIN_ALERT, 0L)
-    fun setLastRainAlertMillis(millis: Long) = prefs.edit().putLong(KEY_LAST_RAIN_ALERT, millis).apply()
-
-    fun getRadarProvider(): String = getString(KEY_RADAR_PROVIDER, RadarProviders.OFF_ID) ?: RadarProviders.OFF_ID
-    fun setRadarProvider(id: String) = putString(KEY_RADAR_PROVIDER, id)
 }

@@ -156,6 +156,7 @@ import com.sameerasw.overcast.weather.model.DailyForecast
 import com.sameerasw.overcast.ui.components.LocalWeatherIconStyle
 import com.sameerasw.overcast.ui.components.WeatherDetailIcon
 import com.sameerasw.overcast.ui.components.WeatherIcon
+import com.sameerasw.overcast.ui.features.weather.map.WeatherMapScreen
 import com.sameerasw.overcast.weather.TemperatureUnit
 import com.sameerasw.overcast.weather.WeatherDetailSlot
 import com.sameerasw.overcast.weather.WeatherIconStyle
@@ -320,6 +321,7 @@ fun WeatherScreen(onOpenSettings: () -> Unit = {}) {
         if (granted) scope.launch { WeatherRepository.refresh(context, force = true) }
     }
     var showLocations by remember { mutableStateOf(false) }
+    var showMap by remember { mutableStateOf(false) }
     val sheetTop = remember { mutableFloatStateOf(Float.NaN) }
     val sheetOpen = showLocations
     val screenWidthPx = with(LocalDensity.current) { LocalConfiguration.current.screenWidthDp.dp.toPx() }
@@ -600,18 +602,12 @@ fun WeatherScreen(onOpenSettings: () -> Unit = {}) {
                                         HourlySection(snapshot, units.temperature, palette, units = units)
                                         if (MainSection.TREND in visibleSections) TrendSection(snapshot, units, palette, Modifier.padding(horizontal = SIDE_PADDING))
                                         snapshot.upcomingDays().takeIf { it.isNotEmpty() }
-                                            ?.let { DailySection(it, units, palette, Modifier.padding(horizontal = SIDE_PADDING)) }
-                                        if (MainSection.DETAILS in visibleSections) DetailsSection(snapshot, units, palette, Modifier.padding(horizontal = SIDE_PADDING))
-                                        if (MainSection.ACTIVITIES in visibleSections) ActivitySection(snapshot, units, palette, Modifier.padding(horizontal = SIDE_PADDING))
-                                        if (MainSection.RADAR in visibleSections) RadarSection(state.snapshot ?: snapshot, units, palette, Modifier.padding(horizontal = SIDE_PADDING))
-                                        if (MainSection.AIR_QUALITY in visibleSections) AqiSection(state.snapshot ?: snapshot, palette, Modifier.padding(horizontal = SIDE_PADDING))
-                                        if (MainSection.MARINE in visibleSections) MarineSection(state.snapshot ?: snapshot, units, palette, Modifier.padding(horizontal = SIDE_PADDING))
-                                        if (MainSection.RIVER in visibleSections) RiverSection(state.snapshot ?: snapshot, palette, Modifier.padding(horizontal = SIDE_PADDING))
-                                        if (MainSection.HISTORY in visibleSections) HistorySection(state.snapshot ?: snapshot, units, palette, Modifier.padding(horizontal = SIDE_PADDING))
-                                        if (MainSection.SUN in visibleSections) SunSection(snapshot, palette, Modifier.padding(horizontal = SIDE_PADDING))
-                                        if (MainSection.SKY_EVENTS in visibleSections) SkyEventsSection(snapshot, palette, Modifier.padding(horizontal = SIDE_PADDING))
-                                        if (MainSection.PLACES in visibleSections) PlacesSection(snapshot, units, palette, ::selectPlace, Modifier.padding(horizontal = SIDE_PADDING))
-                                        ConfidencePill(state.snapshot ?: snapshot, palette, Modifier.padding(horizontal = SIDE_PADDING))
+                                            ?.let { DailySection(it, units.temperature, palette, Modifier.padding(horizontal = SIDE_PADDING)) }
+                                        DetailsSection(snapshot, units, palette, Modifier.padding(horizontal = SIDE_PADDING))
+                                        AiAdviceSection(snapshot, palette, Modifier.padding(horizontal = SIDE_PADDING))
+                                        AqiSection(palette, Modifier.padding(horizontal = SIDE_PADDING))
+                                        AllergenSection(palette, Modifier.padding(horizontal = SIDE_PADDING))
+                                        SunSection(snapshot, palette, Modifier.padding(horizontal = SIDE_PADDING))
                                         Footer(
                                             modifier = Modifier.padding(horizontal = SIDE_PADDING).rainSurface("footer"),
                                             snapshot = snapshot,
@@ -699,36 +695,23 @@ fun WeatherScreen(onOpenSettings: () -> Unit = {}) {
                                                     .statusBarsPadding()
                                                     .padding(top = 28.dp),
                                             ) {
-                                                Column(
-                                                    Modifier.onGloballyPositioned { rightFixedBottom.intValue = (it.positionInRoot().y + it.size.height).roundToInt() },
-                                                    verticalArrangement = Arrangement.spacedBy(20.dp),
-                                                ) {
-                                                    HourlySection(snapshot, units.temperature, palette, units = units)
-                                                    if (MainSection.TREND in visibleSections) TrendSection(snapshot, units, palette, Modifier.padding(horizontal = SIDE_PADDING))
-                                                    if (MainSection.DETAILS in visibleSections) DetailsSection(snapshot, units, palette, Modifier.padding(horizontal = SIDE_PADDING))
-                                                }
-                                                rightSections.forEach { section -> key(section) { balancedSection(section) } }
-                                                if (MainSection.PLACES in visibleSections) {
-                                                    PlacesSection(snapshot, units, palette, ::selectPlace, Modifier.onSizeChanged { placesHeight.intValue = it.height }.padding(top = 20.dp).padding(horizontal = SIDE_PADDING))
-                                                }
-                                                ConfidencePill(state.snapshot ?: snapshot, palette, Modifier.padding(top = 20.dp).padding(horizontal = SIDE_PADDING))
-                                                Footer(
-                                                    modifier = Modifier
-                                                        .padding(top = 20.dp)
-                                                        .onSizeChanged { footerHeight.intValue = it.height }
-                                                        .padding(horizontal = SIDE_PADDING)
-                                                        .rainSurface("footer"),
-                                                    snapshot = snapshot,
-                                                    error = state.error,
-                                                    palette = palette,
-                                                    refreshing = state.loading,
-                                                    onRefresh = {
-                                                        HapticUtil.performVirtualKeyHaptic(view)
-                                                        scope.launch { WeatherRepository.refresh(context, force = true) }
-                                                    },
-                                                    onOpenSettings = onOpenSettings,
-                                                    onShare = { showShare = true },
-                                                )
+                                            HourlySection(snapshot, units.temperature, palette)
+                                            DetailsSection(snapshot, units, palette, Modifier.padding(horizontal = SIDE_PADDING))
+                                            AiAdviceSection(snapshot, palette, Modifier.padding(horizontal = SIDE_PADDING))
+                                            AqiSection(palette, Modifier.padding(horizontal = SIDE_PADDING))
+                                            AllergenSection(palette, Modifier.padding(horizontal = SIDE_PADDING))
+                                            Footer(
+                                                modifier = Modifier.padding(horizontal = SIDE_PADDING).rainSurface("footer"),
+                                                snapshot = snapshot,
+                                                error = state.error,
+                                                palette = palette,
+                                                refreshing = state.loading,
+                                                onRefresh = {
+                                                    HapticUtil.performVirtualKeyHaptic(view)
+                                                    scope.launch { WeatherRepository.refresh(context, force = true) }
+                                                },
+                                                onOpenSettings = onOpenSettings,
+                                            )
                                             }
                                         }
                                     }
@@ -765,7 +748,14 @@ fun WeatherScreen(onOpenSettings: () -> Unit = {}) {
                                 val progress = collapse.floatValue
                                 Spacer(Modifier.height(14.dp))
                                 Box(Modifier.foldAway(maxOf(((progress - 0.25f) / 0.5f).coerceIn(0f, 1f), ambient.floatValue))) {
-                                    LocationChip(snapshot, palette, Modifier.padding(horizontal = SIDE_PADDING), onClick = { showLocations = true })
+                                    Row(
+                                        modifier = Modifier.fillMaxWidth().padding(horizontal = SIDE_PADDING),
+                                        horizontalArrangement = Arrangement.spacedBy(8.dp),
+                                        verticalAlignment = Alignment.CenterVertically,
+                                    ) {
+                                        LocationChip(snapshot, palette, Modifier.weight(1f), onClick = { showLocations = true })
+                                        MapButton(palette, onClick = { showMap = true })
+                                    }
                                 }
                                 val ambientInset = WindowInsets.statusBars.getTop(density) + with(density) { 14.dp.roundToPx() }
                                 Header(
@@ -810,6 +800,15 @@ fun WeatherScreen(onOpenSettings: () -> Unit = {}) {
                                     AmbientForecast({ ambient.floatValue }, snapshot, units.temperature, palette, Modifier.align(Alignment.BottomCenter).onSizeChanged { ambientForecastPx.intValue = it.height })
                                 }
                             }
+                        }
+                        if (showMap) {
+                            WeatherMapScreen(
+                                onClose = {
+                                    HapticUtil.performVirtualKeyHaptic(view)
+                                    showMap = false
+                                },
+                                modifier = Modifier.fillMaxSize(),
+                            )
                         }
                     }
                 }
@@ -974,6 +973,26 @@ private fun LocationChip(snapshot: WeatherSnapshot, palette: WeatherPalette, mod
             leadingIconContentColor = palette.accent,
         ),
     )
+}
+
+@Composable
+private fun MapButton(palette: WeatherPalette, onClick: () -> Unit) {
+    val view = LocalView.current
+    Surface(color = palette.card, shape = CircleShape) {
+        IconButton(
+            onClick = {
+                HapticUtil.performVirtualKeyHaptic(view)
+                onClick()
+            },
+        ) {
+            Icon(
+                painterResource(R.drawable.rounded_map_24),
+                stringResource(R.string.map_title),
+                tint = palette.onBase,
+                modifier = Modifier.size(20.dp),
+            )
+        }
+    }
 }
 
 internal fun Modifier.foldAway(fraction: Float): Modifier =

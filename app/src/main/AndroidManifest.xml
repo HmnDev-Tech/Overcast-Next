@@ -80,39 +80,15 @@
         </receiver>
 
         <receiver
-            android:name=".weather.widget.DailyWidgetReceiver"
+            android:name=".weather.widget.ExpressiveWidgetReceiver"
             android:exported="true"
-            android:label="@string/widget_daily_label">
+            android:label="@string/widget_expressive_label">
             <intent-filter>
                 <action android:name="android.appwidget.action.APPWIDGET_UPDATE" />
             </intent-filter>
             <meta-data
                 android:name="android.appwidget.provider"
-                android:resource="@xml/daily_widget_info" />
-        </receiver>
-
-        <receiver
-            android:name=".weather.widget.NowcastWidgetReceiver"
-            android:exported="true"
-            android:label="@string/widget_nowcast_label">
-            <intent-filter>
-                <action android:name="android.appwidget.action.APPWIDGET_UPDATE" />
-            </intent-filter>
-            <meta-data
-                android:name="android.appwidget.provider"
-                android:resource="@xml/nowcast_widget_info" />
-        </receiver>
-
-        <receiver
-            android:name=".weather.widget.AqiWidgetReceiver"
-            android:exported="true"
-            android:label="@string/widget_aqi_label">
-            <intent-filter>
-                <action android:name="android.appwidget.action.APPWIDGET_UPDATE" />
-            </intent-filter>
-            <meta-data
-                android:name="android.appwidget.provider"
-                android:resource="@xml/aqi_widget_info" />
+                android:resource="@xml/expressive_widget_info" />
         </receiver>
 
         <service

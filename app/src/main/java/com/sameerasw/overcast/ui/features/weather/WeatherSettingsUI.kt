@@ -123,7 +123,6 @@ fun WeatherSettingsUI(
     var ambientForecast by remember { mutableStateOf(settings.isAmbientForecastEnabled()) }
     var ambientTimeline by remember { mutableStateOf(settings.isAmbientTimelineEnabled()) }
     var screensaverAutoAnimate by remember { mutableStateOf(settings.isScreensaverAutoAnimateEnabled()) }
-    var unitsExpanded by remember { mutableStateOf(false) }
     var showCompatibilityInfo by remember { mutableStateOf(false) }
     var showLocations by remember { mutableStateOf(false) }
     var showPreciseInfo by remember { mutableStateOf(false) }
@@ -131,6 +130,7 @@ fun WeatherSettingsUI(
     var effects by remember { mutableStateOf(settings.isWeatherEffectsEnabled()) }
     var locationScene by remember { mutableStateOf(settings.isLocationSceneEnabled()) }
     var weatherHaptics by remember { mutableStateOf(settings.isWeatherHapticsEnabled()) }
+    var allergenCard by remember { mutableStateOf(settings.isAllergenCardEnabled()) }
     var refreshMinutes by remember { mutableIntStateOf(settings.getWeatherRefreshMinutes()) }
     var savedKey by remember { mutableStateOf(settings.getWeatherApiKey(providerId).orEmpty()) }
     var keyInput by remember { mutableStateOf(savedKey) }
@@ -422,73 +422,6 @@ fun WeatherSettingsUI(
                         )
                     }
                 }
-                IconToggleItem(
-                    iconRes = R.drawable.rounded_straighten_24,
-                    title = stringResource(R.string.weather_section_units),
-                    showToggle = false,
-                    onClick = { unitsExpanded = !unitsExpanded },
-                    trailingContent = {
-                        Icon(
-                            painter = painterResource(if (unitsExpanded) R.drawable.rounded_keyboard_arrow_up_24 else R.drawable.rounded_keyboard_arrow_down_24),
-                            contentDescription = null,
-                            tint = MaterialTheme.colorScheme.onSurfaceVariant,
-                        )
-                    },
-                )
-                AnimatedVisibility(visible = unitsExpanded) {
-                    Column(verticalArrangement = Arrangement.spacedBy(2.dp)) {
-                        UnitPickerItem(
-                            title = R.string.weather_units_temperature,
-                            options = TemperatureUnit.entries,
-                            iconRes = R.drawable.rounded_thermostat_24,
-                            id = { it.id },
-                            symbol = { it.symbol },
-                            system = WeatherUnits.systemTemperature(),
-                            stored = settings.getWeatherUnits(),
-                            onSelected = settings::setWeatherUnits,
-                        )
-                        UnitPickerItem(
-                            title = R.string.weather_units_wind,
-                            options = WindSpeedUnit.entries,
-                            iconRes = R.drawable.rounded_air_24,
-                            id = { it.id },
-                            symbol = { it.symbol },
-                            system = WeatherUnits.systemWind(),
-                            stored = settings.getWindUnit(),
-                            onSelected = settings::setWindUnit,
-                        )
-                        UnitPickerItem(
-                            title = R.string.weather_units_pressure,
-                            options = PressureUnit.entries,
-                            iconRes = R.drawable.rounded_compress_24,
-                            id = { it.id },
-                            symbol = { it.symbol },
-                            system = WeatherUnits.systemPressure(),
-                            stored = settings.getPressureUnit(),
-                            onSelected = settings::setPressureUnit,
-                        )
-                        UnitPickerItem(
-                            title = R.string.weather_units_distance,
-                            options = DistanceUnit.entries,
-                            iconRes = R.drawable.rounded_visibility_24,
-                            id = { it.id },
-                            symbol = { it.symbol },
-                            system = WeatherUnits.systemDistance(),
-                            stored = settings.getDistanceUnit(),
-                            onSelected = settings::setDistanceUnit,
-                        )
-                        UnitPickerItem(
-                            title = R.string.weather_units_precipitation,
-                            options = PrecipitationUnit.entries,
-                            iconRes = R.drawable.rounded_water_drop_24,
-                            id = { it.id },
-                            symbol = { it.symbol },
-                            system = WeatherUnits.systemPrecipitation(),
-                            stored = settings.getPrecipitationUnit(),
-                            onSelected = settings::setPrecipitationUnit,
-                        )
-                    }
-                }
                 val sourceError = weatherState.error?.takeIf { it !is WeatherError.LocationPermission && it !is WeatherError.NoLocation }
                 AnimatedVisibility(visible = sourceError != null) {
                     val shownError = remember { mutableStateOf(sourceError) }
@@ -516,6 +449,60 @@ fun WeatherSettingsUI(
                         }
                     }
                 }
+            }
+
+            SectionTitle(R.string.weather_section_units)
+            RoundedCardContainer(spacing = 2.dp, cornerRadius = 24.dp) {
+                UnitPickerItem(
+                    title = R.string.weather_units_temperature,
+                    options = TemperatureUnit.entries,
+                    iconRes = R.drawable.rounded_thermostat_24,
+                    id = { it.id },
+                    symbol = { it.symbol },
+                    system = WeatherUnits.systemTemperature(),
+                    stored = settings.getWeatherUnits(),
+                    onSelected = settings::setWeatherUnits,
+                )
+                UnitPickerItem(
+                    title = R.string.weather_units_wind,
+                    options = WindSpeedUnit.entries,
+                    iconRes = R.drawable.rounded_air_24,
+                    id = { it.id },
+                    symbol = { it.symbol },
+                    system = WeatherUnits.systemWind(),
+                    stored = settings.getWindUnit(),
+                    onSelected = settings::setWindUnit,
+                )
+                UnitPickerItem(
+                    title = R.string.weather_units_pressure,
+                    options = PressureUnit.entries,
+                    iconRes = R.drawable.rounded_compress_24,
+                    id = { it.id },
+                    symbol = { it.symbol },
+                    system = WeatherUnits.systemPressure(),
+                    stored = settings.getPressureUnit(),
+                    onSelected = settings::setPressureUnit,
+                )
+                UnitPickerItem(
+                    title = R.string.weather_units_distance,
+                    options = DistanceUnit.entries,
+                    iconRes = R.drawable.rounded_visibility_24,
+                    id = { it.id },
+                    symbol = { it.symbol },
+                    system = WeatherUnits.systemDistance(),
+                    stored = settings.getDistanceUnit(),
+                    onSelected = settings::setDistanceUnit,
+                )
+                UnitPickerItem(
+                    title = R.string.weather_units_precipitation,
+                    options = PrecipitationUnit.entries,
+                    iconRes = R.drawable.rounded_water_drop_24,
+                    id = { it.id },
+                    symbol = { it.symbol },
+                    system = WeatherUnits.systemPrecipitation(),
+                    stored = settings.getPrecipitationUnit(),
+                    onSelected = settings::setPrecipitationUnit,
+                )
             }
 
             SectionTitle(R.string.weather_section_display)
@@ -578,101 +565,14 @@ fun WeatherSettingsUI(
                         settings.setCompatibilityMode(it)
                     },
                 )
-                AnimatedVisibility(visible = compatibility) {
-                    Column(verticalArrangement = Arrangement.spacedBy(2.dp)) {
-                        COMPATIBILITY_OPTIONS.forEach { (feature, iconRes, titleRes) ->
-                            var checked by remember { mutableStateOf(settings.isCompatibilityFeatureEnabled(feature)) }
-                            IconToggleItem(
-                                iconRes = iconRes,
-                                title = stringResource(titleRes),
-                                isChecked = checked,
-                                onCheckedChange = {
-                                    HapticUtil.performVirtualKeyHaptic(view)
-                                    checked = it
-                                    settings.setCompatibilityFeatureEnabled(feature, it)
-                                },
-                            )
-                        }
-                    }
-                }
-            }
-
-            SectionTitle(R.string.notify_section)
-            RoundedCardContainer(spacing = 2.dp, cornerRadius = 24.dp) {
-                var summary by remember { mutableStateOf(settings.isMorningSummaryEnabled() && WeatherNotifications.canPost(context)) }
-                var summaryHour by remember { mutableIntStateOf(settings.getMorningSummaryHour()) }
-                var rainAlerts by remember { mutableStateOf(settings.isRainAlertEnabled() && WeatherNotifications.canPost(context)) }
-                var skyAlerts by remember { mutableStateOf(settings.isSkyAlertEnabled() && WeatherNotifications.canPost(context)) }
-                var pendingToggle by remember { mutableStateOf<((Boolean) -> Unit)?>(null) }
-                val notificationLauncher = rememberLauncherForActivityResult(ActivityResultContracts.RequestPermission()) { granted ->
-                    pendingToggle?.invoke(granted)
-                    pendingToggle = null
-                }
-                fun withPermission(apply: (Boolean) -> Unit) {
-                    if (WeatherNotifications.canPost(context) || Build.VERSION.SDK_INT < Build.VERSION_CODES.TIRAMISU) {
-                        apply(true)
-                    } else {
-                        pendingToggle = apply
-                        notificationLauncher.launch(Manifest.permission.POST_NOTIFICATIONS)
-                    }
-                }
                 IconToggleItem(
-                    iconRes = R.drawable.rounded_notifications_24,
-                    title = stringResource(R.string.notify_morning_summary),
-                    isChecked = summary,
-                    onCheckedChange = { checked ->
+                    iconRes = R.drawable.rounded_eco_24,
+                    title = stringResource(R.string.allergen_card_title),
+                    isChecked = allergenCard,
+                    onCheckedChange = {
                         HapticUtil.performVirtualKeyHaptic(view)
-                        val apply: (Boolean) -> Unit = { allowed ->
-                            summary = checked && allowed
-                            settings.setMorningSummaryEnabled(summary)
-                            WeatherNotifications.scheduleSummary(context)
-                        }
-                        if (checked) withPermission(apply) else apply(true)
-                    },
-                )
-                AnimatedVisibility(visible = summary) {
-                    ConfigPickerItem(
-                        title = stringResource(R.string.notify_summary_time),
-                        selectedValue = hourLabel(context, summaryHour),
-                        iconRes = R.drawable.rounded_schedule_24,
-                        modifier = Modifier.fillMaxWidth(),
-                    ) {
-                        (5..11).forEach { hour ->
-                            SegmentedDropdownMenuItem(
-                                text = { Text(hourLabel(context, hour)) },
-                                onClick = {
-                                    summaryHour = hour
-                                    settings.setMorningSummaryHour(hour)
-                                    WeatherNotifications.scheduleSummary(context)
-                                },
-                            )
-                        }
-                    }
-                }
-                IconToggleItem(
-                    iconRes = R.drawable.rounded_rainy_24,
-                    title = stringResource(R.string.notify_rain_alert),
-                    isChecked = rainAlerts,
-                    onCheckedChange = { checked ->
-                        HapticUtil.performVirtualKeyHaptic(view)
-                        val apply: (Boolean) -> Unit = { allowed ->
-                            rainAlerts = checked && allowed
-                            settings.setRainAlertEnabled(rainAlerts)
-                        }
-                        if (checked) withPermission(apply) else apply(true)
-                    },
-                )
-                IconToggleItem(
-                    iconRes = R.drawable.rounded_auto_awesome_24,
-                    title = stringResource(R.string.notify_sky_alert),
-                    isChecked = skyAlerts,
-                    onCheckedChange = { checked ->
-                        HapticUtil.performVirtualKeyHaptic(view)
-                        val apply: (Boolean) -> Unit = { allowed ->
-                            skyAlerts = checked && allowed
-                            settings.setSkyAlertEnabled(skyAlerts)
-                        }
-                        if (checked) withPermission(apply) else apply(true)
+                        allergenCard = it
+                        settings.setAllergenCardEnabled(it)
                     },
                 )
             }

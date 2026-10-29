@@ -50,7 +50,10 @@ import com.sameerasw.overcast.ui.components.dialogs.AboutSection
 import com.sameerasw.overcast.ui.core.containers.RoundedCardContainer
 import com.sameerasw.overcast.ui.features.weather.WeatherExperimentsUI
 import com.sameerasw.overcast.ui.features.weather.AiSettingsUI
+import com.sameerasw.overcast.ui.features.weather.IslandSettingsUI
+import com.sameerasw.overcast.ui.features.weather.MapSettingsUI
 import com.sameerasw.overcast.ui.features.weather.WeatherSettingsUI
+import com.sameerasw.overcast.ui.features.weather.WidgetSettingsUI
 import com.sameerasw.overcast.ui.modifiers.BlurDirection
 import com.sameerasw.overcast.ui.modifiers.progressiveBlur
 import com.sameerasw.overcast.BuildConfig
@@ -120,7 +123,13 @@ class SettingsActivity : ComponentActivity() {
                             }
                             WeatherSettingsUI(modifier = Modifier.padding(top = 16.dp))
 
-                            AiSettingsUI(modifier = Modifier.padding(top = 16.dp))
+                            IslandSettingsUI(modifier = Modifier.padding(top = 16.dp))
+
+                            MapSettingsUI(modifier = Modifier.padding(top = 16.dp))
+
+                            WidgetSettingsUI(modifier = Modifier.padding(top = 16.dp))
+
+                            AiSettingsUI(modifier = Modifier.padding(top = 0.dp))
 
                             Spacer(Modifier.height(32.dp))
 

@@ -38,6 +38,16 @@ android {
     }
 
     flavorDimensions += "distribution"
+    signingConfigs {
+        create("release") {
+            val storeFilePath = System.getenv("OVERCAST_KEYSTORE_PATH") ?: "release.keystore"
+            storeFile = rootProject.file(storeFilePath).takeIf { it.exists() }
+            storePassword = System.getenv("OVERCAST_KEYSTORE_PASSWORD")
+            keyAlias = System.getenv("OVERCAST_KEY_ALIAS")
+            keyPassword = System.getenv("OVERCAST_KEY_PASSWORD")
+        }
+    }
+
     productFlavors {
         // GitHub
         create("github") {
@@ -71,6 +81,9 @@ android {
                 getDefaultProguardFile("proguard-android-optimize.txt"),
                 "proguard-rules.pro",
             )
+            if (signingConfigs.getByName("release").storeFile != null) {
+                signingConfig = signingConfigs.getByName("release")
+            }
         }
     }
     compileOptions {
