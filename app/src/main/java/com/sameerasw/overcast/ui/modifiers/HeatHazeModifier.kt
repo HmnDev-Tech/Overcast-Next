@@ -17,7 +17,7 @@ import androidx.compose.ui.platform.LocalDensity
 
 @Composable
 fun Modifier.heatHaze(strength: Float): Modifier {
-    if (Build.VERSION.SDK_INT < Build.VERSION_CODES.TIRAMISU || CompatibilityMode.enabled.value || strength <= 0f) return this
+    if (Build.VERSION.SDK_INT < Build.VERSION_CODES.TIRAMISU || CompatibilityMode.noHeatHaze || strength <= 0f) return this
     return HeatHazeApi33.apply(this, strength.coerceIn(0f, 1f), LocalDensity.current.density)
 }
 

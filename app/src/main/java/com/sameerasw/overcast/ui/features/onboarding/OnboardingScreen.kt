@@ -79,6 +79,7 @@ import com.sameerasw.overcast.ui.theme.GoogleSansFlexRounded
 import com.sameerasw.overcast.utils.HapticUtil
 import com.sameerasw.overcast.weather.WeatherRepository
 import com.sameerasw.overcast.weather.location.DeviceLocationSource
+import com.sameerasw.overcast.weather.notify.WeatherNotifications
 import kotlinx.coroutines.launch
 
 private enum class OnboardingStep { WELCOME, LOCATION }
@@ -97,6 +98,10 @@ fun OnboardingScreen(onFinished: () -> Unit) {
     var step by remember { mutableStateOf(OnboardingStep.WELCOME) }
     var hasLocation by remember { mutableStateOf(DeviceLocationSource.hasPermission(context)) }
     var hasBackground by remember { mutableStateOf(hasBackgroundLocation(context)) }
+    var hasNotifications by remember { mutableStateOf(WeatherNotifications.canPost(context)) }
+    val notificationLauncher = rememberLauncherForActivityResult(ActivityResultContracts.RequestPermission()) {
+        hasNotifications = WeatherNotifications.canPost(context)
+    }
     var pickedPlace by remember { mutableStateOf<String?>(null) }
     var showSheet by remember { mutableStateOf(false) }
 
@@ -164,10 +169,14 @@ fun OnboardingScreen(onFinished: () -> Unit) {
                 OnboardingStep.LOCATION -> LocationStep(
                     hasLocation = hasLocation,
                     hasBackground = hasBackground,
+                    hasNotifications = hasNotifications,
                     pickedPlace = pickedPlace,
                     onAllowLocation = { locationLauncher.launch(Manifest.permission.ACCESS_COARSE_LOCATION) },
                     onAllowBackground = {
                         if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.Q) backgroundLauncher.launch(Manifest.permission.ACCESS_BACKGROUND_LOCATION)
+                    },
+                    onAllowNotifications = {
+                        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU) notificationLauncher.launch(Manifest.permission.POST_NOTIFICATIONS)
                     },
                     onSearch = { showSheet = true },
                     onBack = {
@@ -320,9 +329,11 @@ private fun WelcomeStep(onNext: () -> Unit) {
 private fun LocationStep(
     hasLocation: Boolean,
     hasBackground: Boolean,
+    hasNotifications: Boolean,
     pickedPlace: String?,
     onAllowLocation: () -> Unit,
     onAllowBackground: () -> Unit,
+    onAllowNotifications: () -> Unit,
     onSearch: () -> Unit,
     onBack: () -> Unit,
     onFinish: () -> Unit,
@@ -371,6 +382,19 @@ private fun LocationStep(
                         onAction = {
                             HapticUtil.performVirtualKeyHaptic(view)
                             onAllowBackground()
+                        },
+                    )
+                }
+                if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU) {
+                    PermissionCard(
+                        iconRes = R.drawable.rounded_notifications_24,
+                        title = stringResource(R.string.onboarding_perm_notifications_title),
+                        usage = stringResource(R.string.onboarding_perm_notifications_usage),
+                        done = hasNotifications,
+                        actionLabel = stringResource(R.string.onboarding_allow),
+                        onAction = {
+                            HapticUtil.performVirtualKeyHaptic(view)
+                            onAllowNotifications()
                         },
                     )
                 }

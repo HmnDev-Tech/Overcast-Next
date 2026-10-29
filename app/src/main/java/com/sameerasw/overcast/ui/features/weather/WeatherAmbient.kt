@@ -1,6 +1,27 @@
 package com.sameerasw.overcast.ui.features.weather
 
 import androidx.compose.foundation.background
+import android.content.SharedPreferences
+import androidx.compose.runtime.DisposableEffect
+import com.sameerasw.overcast.data.repository.SettingsRepository
+import androidx.compose.animation.Crossfade
+import androidx.compose.foundation.Image
+import androidx.compose.foundation.layout.fillMaxWidth
+import androidx.compose.foundation.layout.height
+import androidx.compose.ui.draw.drawWithContent
+import androidx.compose.ui.graphics.BlendMode
+import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.graphics.ColorFilter
+import androidx.compose.ui.graphics.lerp
+import androidx.compose.ui.graphics.luminance
+import androidx.compose.ui.graphics.CompositingStrategy
+import androidx.compose.ui.layout.ContentScale
+import androidx.compose.ui.platform.LocalContext
+import androidx.compose.ui.res.painterResource
+import com.sameerasw.overcast.R
+import com.sameerasw.overcast.weather.WeatherRepository
+import com.sameerasw.overcast.weather.scene.SceneRepository
+import com.sameerasw.overcast.weather.scene.SceneType
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.animation.core.tween
 import androidx.compose.animation.core.LinearEasing
@@ -79,7 +100,80 @@ internal fun BoxScope.WeatherSkyBackground(
             ),
     )
     snapshot?.let { SkyBody(it, now, collapse, rise) }
+    LocationScene(snapshot, palette, collapse)
 }
+
+@Composable
+private fun LocationScene(snapshot: WeatherSnapshot?, palette: WeatherPalette, collapse: () -> Float) {
+    val scene = rememberLocationScene(snapshot)
+    Crossfade(scene, animationSpec = tween(1200), label = "locationScene") { type ->
+        if (type == null) return@Crossfade
+        Box(Modifier.fillMaxWidth().height(SKY_HEIGHT + SCENE_DROP)) {
+            Image(
+                painter = painterResource(type.drawableRes),
+                contentDescription = null,
+                contentScale = ContentScale.FillWidth,
+                colorFilter = ColorFilter.tint(sceneTint(palette)),
+                modifier = Modifier
+                    .align(Alignment.BottomCenter)
+                    .fillMaxWidth()
+                    .graphicsLayer {
+                        alpha = SCENE_ALPHA * (1f - collapse() * 1.4f).coerceIn(0f, 1f)
+                        translationY = -collapse() * 30.dp.toPx()
+                        compositingStrategy = CompositingStrategy.Offscreen
+                    }
+                    .drawWithContent {
+                        drawContent()
+                        drawRect(Brush.verticalGradient(0.45f to Color.Black, 1f to Color.Transparent), blendMode = BlendMode.DstIn)
+                    },
+            )
+        }
+    }
+}
+
+@Composable
+internal fun rememberLocationScene(snapshot: WeatherSnapshot?): SceneType? {
+    val context = LocalContext.current
+    val settings = remember { SettingsRepository(context) }
+    var settingsVersion by remember { mutableIntStateOf(0) }
+    DisposableEffect(settings) {
+        val listener = SharedPreferences.OnSharedPreferenceChangeListener { _, _ -> settingsVersion++ }
+        settings.registerChangeListener(listener)
+        onDispose { settings.unregisterChangeListener(listener) }
+    }
+    val enabled = remember(settingsVersion) { settings.isLocationSceneEnabled() }
+    val simulated = remember(settingsVersion) { settings.getSimulatedScene()?.let { id -> SceneType.entries.firstOrNull { it.name == id } } }
+    val scene by produceState<SceneType?>(null, snapshot?.locationName, enabled, simulated) {
+        value = null
+        if (!enabled) return@produceState
+        if (simulated != null) {
+            value = simulated
+            return@produceState
+        }
+        if (snapshot == null) return@produceState
+        val location = WeatherRepository.lastKnownLocation(context) ?: return@produceState
+        value = SceneRepository.sceneFor(context, location.latitude, location.longitude, snapshot.locationName)
+    }
+    return scene
+}
+
+private const val SCENE_ALPHA = 0.85f
+private val SCENE_DROP = 150.dp
+
+internal fun sceneTint(palette: WeatherPalette): Color =
+    if (palette.glow.luminance() < 0.03f) lerp(palette.glow, palette.accent, 0.2f) else palette.base
+
+internal val SceneType.drawableRes: Int
+    get() = when (this) {
+        SceneType.CITY -> R.drawable.scene_city
+        SceneType.COASTAL_CITY -> R.drawable.scene_coastal_city
+        SceneType.COAST -> R.drawable.scene_coast
+        SceneType.MOUNTAINS -> R.drawable.scene_mountains
+        SceneType.HILLS -> R.drawable.scene_hills
+        SceneType.FOREST -> R.drawable.scene_forest
+        SceneType.FIELDS -> R.drawable.scene_fields
+        SceneType.DESERT -> R.drawable.scene_desert
+    }
 
 // The rain-on-glass refraction, lit from wherever the sun or moon currently is.
 @Composable
@@ -175,7 +269,7 @@ internal fun AmbientWeatherScene(
             timeline.set(0f)
         }
     }
-    val animate = animateIntro && !CompatibilityMode.enabled.value
+    val animate = animateIntro && !CompatibilityMode.reducedMotion
     val intro = remember { Animatable(if (animate) 0f else 1f) }
     LaunchedEffect(animate) {
         if (animate) intro.animateTo(1f, tween(AMBIENT_INTRO_MS, easing = LinearEasing))

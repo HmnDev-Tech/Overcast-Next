@@ -233,6 +233,7 @@ enum class WeatherDetailSlot {
     VISIBILITY,
     DEW_POINT,
     CLOUD_COVER,
+    TEMPERATURE,
 }
 
 @DrawableRes
@@ -244,6 +245,7 @@ fun WeatherIconStyle.detailIcon(slot: WeatherDetailSlot): Int = when (this) {
             WeatherDetailSlot.RAIN_CHANCE -> R.drawable.rounded_rainy_24
             WeatherDetailSlot.PRECIPITATION -> R.drawable.rounded_rainy_24
             WeatherDetailSlot.UV -> R.drawable.rounded_wb_sunny_24
+            WeatherDetailSlot.TEMPERATURE -> R.drawable.rounded_thermostat_24
             WeatherDetailSlot.PRESSURE -> R.drawable.rounded_cloud_24
             WeatherDetailSlot.VISIBILITY -> R.drawable.rounded_visibility_24
             WeatherDetailSlot.DEW_POINT -> R.drawable.rounded_water_drop_24
@@ -256,6 +258,7 @@ fun WeatherIconStyle.detailIcon(slot: WeatherDetailSlot): Int = when (this) {
             WeatherDetailSlot.RAIN_CHANCE -> R.drawable.filled_rainy_24
             WeatherDetailSlot.PRECIPITATION -> R.drawable.filled_rainy_24
             WeatherDetailSlot.UV -> R.drawable.filled_wb_sunny_24
+            WeatherDetailSlot.TEMPERATURE -> R.drawable.filled_wb_sunny_24
             WeatherDetailSlot.PRESSURE -> R.drawable.filled_cloud_24
             WeatherDetailSlot.VISIBILITY -> R.drawable.filled_visibility_24
             WeatherDetailSlot.DEW_POINT -> R.drawable.filled_water_drop_24
@@ -268,6 +271,7 @@ fun WeatherIconStyle.detailIcon(slot: WeatherDetailSlot): Int = when (this) {
             WeatherDetailSlot.RAIN_CHANCE -> R.drawable.meteocons_d_rain_chance
             WeatherDetailSlot.PRECIPITATION -> R.drawable.meteocons_d_precipitation
             WeatherDetailSlot.UV -> R.drawable.meteocons_d_uv
+            WeatherDetailSlot.TEMPERATURE -> R.drawable.meteocons_d_uv
             WeatherDetailSlot.PRESSURE -> R.drawable.meteocons_d_pressure
             WeatherDetailSlot.VISIBILITY -> R.drawable.meteocons_d_visibility
             WeatherDetailSlot.DEW_POINT -> R.drawable.meteocons_d_dew_point
@@ -280,6 +284,7 @@ fun WeatherIconStyle.detailIcon(slot: WeatherDetailSlot): Int = when (this) {
             WeatherDetailSlot.RAIN_CHANCE -> R.drawable.wi_d_rain_chance
             WeatherDetailSlot.PRECIPITATION -> R.drawable.wi_d_precipitation
             WeatherDetailSlot.UV -> R.drawable.wi_d_uv
+            WeatherDetailSlot.TEMPERATURE -> R.drawable.wi_d_uv
             WeatherDetailSlot.PRESSURE -> R.drawable.wi_d_pressure
             WeatherDetailSlot.VISIBILITY -> R.drawable.wi_d_visibility
             WeatherDetailSlot.DEW_POINT -> R.drawable.wi_d_dew_point
@@ -292,6 +297,7 @@ fun WeatherIconStyle.detailIcon(slot: WeatherDetailSlot): Int = when (this) {
             WeatherDetailSlot.RAIN_CHANCE -> R.drawable.fluent3d_heavy_rain
             WeatherDetailSlot.PRECIPITATION -> R.drawable.fluent3d_rain
             WeatherDetailSlot.UV -> R.drawable.fluent3d_clear_day
+            WeatherDetailSlot.TEMPERATURE -> R.drawable.fluent3d_clear_day
             WeatherDetailSlot.PRESSURE -> R.drawable.fluent3d_d_pressure
             WeatherDetailSlot.VISIBILITY -> R.drawable.fluent3d_d_visibility
             WeatherDetailSlot.DEW_POINT -> R.drawable.fluent3d_d_dew_point
@@ -304,6 +310,7 @@ fun WeatherIconStyle.detailIcon(slot: WeatherDetailSlot): Int = when (this) {
             WeatherDetailSlot.RAIN_CHANCE -> R.drawable.noto3d_heavy_rain
             WeatherDetailSlot.PRECIPITATION -> R.drawable.noto3d_rain
             WeatherDetailSlot.UV -> R.drawable.noto3d_clear_day
+            WeatherDetailSlot.TEMPERATURE -> R.drawable.noto3d_clear_day
             WeatherDetailSlot.PRESSURE -> R.drawable.noto3d_d_pressure
             WeatherDetailSlot.VISIBILITY -> R.drawable.noto3d_d_visibility
             WeatherDetailSlot.DEW_POINT -> R.drawable.noto3d_d_dew_point
@@ -316,6 +323,7 @@ fun WeatherIconStyle.detailIcon(slot: WeatherDetailSlot): Int = when (this) {
             WeatherDetailSlot.RAIN_CHANCE -> R.drawable.ph_heavy_rain
             WeatherDetailSlot.PRECIPITATION -> R.drawable.ph_rain
             WeatherDetailSlot.UV -> R.drawable.ph_clear_day
+            WeatherDetailSlot.TEMPERATURE -> R.drawable.ph_clear_day
             WeatherDetailSlot.PRESSURE -> R.drawable.ph_d_pressure
             WeatherDetailSlot.VISIBILITY -> R.drawable.ph_d_visibility
             WeatherDetailSlot.DEW_POINT -> R.drawable.ph_d_dew_point
@@ -328,6 +336,7 @@ fun WeatherIconStyle.detailIcon(slot: WeatherDetailSlot): Int = when (this) {
             WeatherDetailSlot.RAIN_CHANCE -> R.drawable.tb_heavy_rain
             WeatherDetailSlot.PRECIPITATION -> R.drawable.tb_rain
             WeatherDetailSlot.UV -> R.drawable.tb_clear_day
+            WeatherDetailSlot.TEMPERATURE -> R.drawable.tb_clear_day
             WeatherDetailSlot.PRESSURE -> R.drawable.tb_d_pressure
             WeatherDetailSlot.VISIBILITY -> R.drawable.tb_d_visibility
             WeatherDetailSlot.DEW_POINT -> R.drawable.tb_d_dew_point

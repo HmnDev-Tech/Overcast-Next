@@ -59,7 +59,7 @@ class HourlyWidget : GlanceAppWidget() {
         ).map { ForecastItem(it.first, style.icon(it.third), it.second) }
         provideContent {
             GlanceTheme {
-                HourlyContent(
+                ForecastWidgetContent(
                     items = sample,
                     tintable = style.tintable,
                     emptyText = "",
@@ -92,11 +92,11 @@ private fun HourlyRoot() {
     val spacing = remember(revision, mode) { resolveSpacing(context, GlanceAppWidgetManager(context).getAppWidgetId(glanceId), mode) }
     val current = weather ?: return
     val items = remember(current) { hourlyItems(context, current) }
-    HourlyContent(items, current.style.tintable, context.getString(R.string.widget_weather_empty), mode, current, spacing)
+    ForecastWidgetContent(items, current.style.tintable, context.getString(R.string.widget_weather_empty), mode, current, spacing)
 }
 
 @Composable
-private fun HourlyContent(
+internal fun ForecastWidgetContent(
     items: List<ForecastItem>,
     tintable: Boolean,
     emptyText: String,
@@ -113,7 +113,7 @@ private fun HourlyContent(
 
     WidgetSurface(mode, weather, background) {
         if (items.isEmpty()) {
-            val textArgb = widgetTextArgb(mode)
+            val textArgb = WIDGET_TEXT_ARGB
             val message = remember(emptyText, textArgb, shadow) {
                 WidgetTemperatureRenderer.renderText(
                     context, emptyText.ifEmpty { " " }, 14f * density * context.resources.configuration.fontScale,
@@ -125,7 +125,7 @@ private fun HourlyContent(
                 horizontalAlignment = Alignment.CenterHorizontally,
                 verticalAlignment = Alignment.CenterVertically,
             ) {
-                Image(provider = ImageProvider(message), contentDescription = emptyText)
+                Image(provider = ImageProvider(message), contentDescription = emptyText, colorFilter = widgetTextTint(mode))
             }
         } else {
             ForecastRow(

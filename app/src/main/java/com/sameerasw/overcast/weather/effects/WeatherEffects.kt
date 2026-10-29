@@ -37,6 +37,7 @@ import androidx.compose.ui.unit.dp
 import com.sameerasw.overcast.utils.CompatibilityMode
 import kotlin.math.PI
 import kotlin.math.abs
+import kotlin.math.cos
 import kotlin.math.floor
 import kotlin.math.min
 import kotlin.math.pow
@@ -53,6 +54,9 @@ interface WeatherEffectHaptics {
 
 object EffectQuality {
     var level by mutableIntStateOf(2)
+
+    // High refresh panels would otherwise redraw the full-screen effects twice as often as they need.
+    const val MIN_FRAME_NS = 9_000_000L
 
     val glassEnabled: Boolean get() = level >= 1
     val blurEnabled: Boolean get() = level >= 1
@@ -177,7 +181,7 @@ fun WeatherEffects(
     cover: () -> List<RainSurface> = surfaces,
     scrollTick: () -> Int = { 0 },
 ) {
-    if (CompatibilityMode.enabled.value) {
+    if (CompatibilityMode.stillEffects) {
         if (!spec.isEmpty) StillWeatherEffects(spec, modifier, strength, clearTop, cover, scrollTick)
         return
     }
@@ -208,8 +212,11 @@ fun WeatherEffects(
         var windowStart = start
         var windowFrames = 0
         var slowWindows = 0
+        var lastTick = currentScrollTick()
         while (true) {
             val frame = withFrameNanos { it }
+            val scrolling = currentScrollTick() != lastTick
+            if (!scrolling && frame - previousFrame < EffectQuality.MIN_FRAME_NS) continue
             val now = (frame - start) / 1_000_000_000f
             val dt = ((frame - previousFrame) / 1_000_000_000f).coerceIn(0f, 0.1f)
             previousFrame = frame
@@ -236,6 +243,7 @@ fun WeatherEffects(
             val needsSurfaces = states.any { it.falling }
             val all = if (needsSurfaces) currentSurfaces() else emptyList()
             val tick = currentScrollTick()
+            lastTick = tick
             if (tick != snowState.tick) {
                 snowState.tick = tick
                 snowState.lastMove = now
@@ -262,22 +270,24 @@ fun WeatherEffects(
         val needsSurfaces = states.any { it.falling }
         val all = if (needsSurfaces) currentSurfaces() else emptyList()
         val settledSurfaces = if (snowState.settled) all else emptyList()
-        val cards = if (!needsSurfaces) emptyList() else if (cover === surfaces) all else currentCover()
+        val cards = if (cover !== surfaces) currentCover() else if (needsSurfaces) all else currentSurfaces()
         coverPath.rewind()
         cards.forEach { surface ->
             val r = min(surface.cornerRadius, min(surface.rect.width, surface.rect.height) / 2f)
             coverPath.addRoundRect(RoundRect(surface.rect, CornerRadius(r, r)))
         }
-        states.forEach { state ->
-            if (state.falling || state.layer is WeatherEffectLayer.Lightning) return@forEach
-            val layer = state.current()
-            val fade = strength * state.level
-            when (layer) {
-                is WeatherEffectLayer.Clouds -> drawClouds(state, t, layer.intensity, fade, fog = false)
-                is WeatherEffectLayer.Fog -> drawClouds(state, t, layer.intensity, fade, fog = true)
-                is WeatherEffectLayer.SunGlow -> drawSunGlow(state, t, layer.intensity, fade)
-                is WeatherEffectLayer.Stars -> drawStars(state.field, t, layer.intensity, fade)
-                else -> Unit
+        clipPath(coverPath, ClipOp.Difference) {
+            states.forEach { state ->
+                if (state.falling || state.layer is WeatherEffectLayer.Lightning) return@forEach
+                val layer = state.current()
+                val fade = strength * state.level
+                when (layer) {
+                    is WeatherEffectLayer.Clouds -> drawClouds(state, t, layer.intensity, fade, fog = false)
+                    is WeatherEffectLayer.Fog -> drawClouds(state, t, layer.intensity, fade, fog = true)
+                    is WeatherEffectLayer.SunGlow -> drawSunGlow(state, t, layer.intensity, fade)
+                    is WeatherEffectLayer.Stars -> drawStars(state.field, t, layer.intensity, fade)
+                    else -> Unit
+                }
             }
         }
         if (needsSurfaces) {
@@ -300,6 +310,55 @@ fun WeatherEffects(
         }
         states.forEach { state ->
             if (state.layer is WeatherEffectLayer.Lightning) drawLightning(t, state.intensity, strength * state.level)
+        }
+    }
+}
+
+class WeatherEffectsRenderer {
+    private val states = mutableListOf<LayerState>()
+    private val snowState = SnowState()
+    private var spec: WeatherEffectSpec? = null
+    private var clock = 0f
+
+    fun update(next: WeatherEffectSpec) {
+        if (next == spec) return
+        reconcile(states, next, animateIn = spec != null, now = clock)
+        spec = next
+    }
+
+    fun draw(scope: DrawScope, t: Float, dt: Float, strength: Float) {
+        clock = t
+        advance(states, dt)
+        with(scope) {
+            states.forEach { state ->
+                if (state.falling || state.layer is WeatherEffectLayer.Lightning) return@forEach
+                val layer = state.current()
+                val fade = strength * state.level
+                when (layer) {
+                    is WeatherEffectLayer.Clouds -> drawClouds(state, t, layer.intensity, fade, fog = false)
+                    is WeatherEffectLayer.Fog -> drawClouds(state, t, layer.intensity, fade, fog = true)
+                    is WeatherEffectLayer.SunGlow -> drawSunGlow(state, t, layer.intensity, fade)
+                    is WeatherEffectLayer.Stars -> drawStars(state.field, t, layer.intensity, fade)
+                    else -> Unit
+                }
+            }
+            states.forEach { state ->
+                val layer = state.current()
+                val fade = strength * state.level
+                when (layer) {
+                    is WeatherEffectLayer.Rain -> {
+                        val target = state.layer as WeatherEffectLayer.Rain
+                        val ratio = (0.12f + 0.2f * layer.intensity) / (0.12f + 0.2f * target.intensity)
+                        drawRain(state, target.copy(slant = layer.slant), t + state.timeOffset, fade * ratio, emptyList())
+                    }
+                    is WeatherEffectLayer.Snow -> drawSnow(state.field, t, layer.intensity, fade, emptyList(), snowState)
+                    is WeatherEffectLayer.Hail -> drawHail(state, layer.intensity, t, fade)
+                    else -> Unit
+                }
+            }
+            states.forEach { state ->
+                if (state.layer is WeatherEffectLayer.Lightning) drawLightning(t, state.intensity, strength * state.level)
+            }
         }
     }
 }
@@ -357,10 +416,10 @@ internal fun DrawScope.drawWeatherEffectsStill(spec: WeatherEffectSpec, strength
             is WeatherEffectLayer.Rain -> behindCards(cover) { drawRain(state, layer, STILL_TIME_S, strength, emptyList()) }
             is WeatherEffectLayer.Snow -> behindCards(cover) { drawSnow(state.field, STILL_TIME_S, layer.intensity, strength, emptyList(), snowState) }
             is WeatherEffectLayer.Hail -> behindCards(cover) { drawHail(state, layer.intensity, STILL_TIME_S, strength) }
-            is WeatherEffectLayer.Clouds -> drawClouds(state, STILL_TIME_S, layer.intensity, strength, fog = false)
-            is WeatherEffectLayer.Fog -> drawClouds(state, STILL_TIME_S, layer.intensity, strength, fog = true)
-            is WeatherEffectLayer.SunGlow -> drawSunGlow(state, STILL_TIME_S, layer.intensity, strength)
-            is WeatherEffectLayer.Stars -> drawStars(state.field, STILL_TIME_S, layer.intensity, strength)
+            is WeatherEffectLayer.Clouds -> behindCards(cover) { drawClouds(state, STILL_TIME_S, layer.intensity, strength, fog = false) }
+            is WeatherEffectLayer.Fog -> behindCards(cover) { drawClouds(state, STILL_TIME_S, layer.intensity, strength, fog = true) }
+            is WeatherEffectLayer.SunGlow -> behindCards(cover) { drawSunGlow(state, STILL_TIME_S, layer.intensity, strength) }
+            is WeatherEffectLayer.Stars -> behindCards(cover) { drawStars(state.field, STILL_TIME_S, layer.intensity, strength) }
             // A full-strength flash would wash the whole widget out, so the frozen frame is the flash at a gentle strength.
             is WeatherEffectLayer.Lightning -> drawLightning(lightningStrike(0) + 0.05f, layer.intensity, strength * 0.35f)
         }
@@ -383,7 +442,7 @@ private fun particleCount(layer: WeatherEffectLayer): Int = when (layer) {
     is WeatherEffectLayer.Rain -> (6 + 55 * layer.intensity.pow(1.3f)).toInt()
     is WeatherEffectLayer.Snow -> (20 + 60 * layer.intensity).toInt()
     is WeatherEffectLayer.Hail -> (20 + 50 * layer.intensity).toInt()
-    is WeatherEffectLayer.Stars -> (12 + 28 * layer.intensity).toInt()
+    is WeatherEffectLayer.Stars -> (50 + 90 * layer.intensity).toInt()
     is WeatherEffectLayer.Clouds, is WeatherEffectLayer.Fog -> 5
     is WeatherEffectLayer.SunGlow, is WeatherEffectLayer.Lightning -> 0
 }
@@ -840,12 +899,66 @@ private fun DrawScope.drawSunGlow(state: LayerState, t: Float, intensity: Float,
 }
 
 private fun DrawScope.drawStars(field: ParticleField, t: Float, intensity: Float, strength: Float) {
+    val fade = intensity * strength
+    val w = size.width
+    val h = size.height * 0.6f
     for (i in 0 until field.count) {
+        val s = field.size[i]
+        val magnitude = s * s * s
         val twinkle = 0.5f + 0.5f * sin(t * (1f + field.speed[i]) + field.phase[i] * TWO_PI)
-        val alpha = (0.15f + 0.45f * twinkle) * intensity * strength
-        val radius = 0.7.dp.toPx() + 0.9.dp.toPx() * field.size[i]
-        drawCircle(Color.White.copy(alpha = alpha), radius, Offset(field.x[i] * size.width, field.phase[i] * size.height * 0.6f))
+        val baseAlpha = ((0.25f + 0.55f * magnitude) * (0.3f + 0.7f * twinkle) * fade).coerceAtMost(1f)
+        val radius = 0.5.dp.toPx() + 0.9.dp.toPx() * magnitude
+        val tone = hash(i * 977 + 11)
+        val color = when {
+            tone < 0.12f -> WARM_STAR
+            tone < 0.3f -> COOL_STAR
+            else -> Color.White
+        }
+        val center = Offset(field.x[i] * w, field.phase[i] * h)
+        val alpha = baseAlpha * horizonFade(center.y)
+        if (alpha <= 0.01f) continue
+        if (magnitude > 0.6f) {
+            val glow = radius * 3f
+            drawCircle(
+                Brush.radialGradient(listOf(color.copy(alpha = alpha * 0.18f), Color.Transparent), center = center, radius = glow),
+                glow,
+                center,
+            )
+        }
+        drawCircle(color.copy(alpha = alpha), radius, center)
     }
+    drawShootingStar(t, fade, w, h)
+}
+
+private fun DrawScope.horizonFade(y: Float): Float =
+    1f - ((y / size.height - HORIZON_FADE_START) / (HORIZON_FADE_END - HORIZON_FADE_START)).coerceIn(0f, 1f)
+
+private fun DrawScope.drawShootingStar(t: Float, fade: Float, w: Float, h: Float) {
+    val cycle = floor(t / METEOR_CYCLE_S).toInt()
+    if (hash(cycle * 31 + 7) >= METEOR_CHANCE) return
+    val startAt = cycle * METEOR_CYCLE_S + hash(cycle * 17 + 3) * (METEOR_CYCLE_S - METEOR_S)
+    val local = (t - startAt) / METEOR_S
+    if (local !in 0f..1f) return
+    val direction = if (hash(cycle * 23 + 9) < 0.5f) -1f else 1f
+    val angle = Math.toRadians(20.0 + 20.0 * hash(cycle * 29 + 4)).toFloat()
+    val dx = cos(angle) * direction
+    val dy = sin(angle)
+    val start = Offset((0.2f + 0.6f * hash(cycle * 13 + 1)) * w, (0.05f + 0.35f * hash(cycle * 19 + 5)) * h)
+    val travel = w * 0.45f
+    val eased = 1f - (1f - local) * (1f - local)
+    val head = Offset(start.x + dx * travel * eased, start.y + dy * travel * eased)
+    val life = sin(local * PI.toFloat())
+    val trail = w * 0.12f * life
+    val tail = Offset(head.x - dx * trail, head.y - dy * trail)
+    val alpha = (0.6f * life * fade * horizonFade(head.y)).coerceAtMost(1f)
+    if (alpha <= 0.01f) return
+    drawLine(
+        Brush.linearGradient(listOf(Color.White.copy(alpha = 0f), Color.White.copy(alpha = alpha)), start = tail, end = head),
+        tail,
+        head,
+        strokeWidth = 1.dp.toPx(),
+        cap = StrokeCap.Round,
+    )
 }
 
 private fun DrawScope.drawLightning(t: Float, intensity: Float, strength: Float) {
@@ -882,4 +995,11 @@ private const val SPLASH_SALT = 211
 private const val SURFACE_SALT = 307
 private const val DEPTH_SALT = 401
 private val SUN_COLOR = Color(0xFFFFD27A)
+private val WARM_STAR = Color(0xFFFFF1DE)
+private val COOL_STAR = Color(0xFFE3ECFF)
+private const val METEOR_CYCLE_S = 18f
+private const val HORIZON_FADE_START = 0.28f
+private const val HORIZON_FADE_END = 0.46f
+private const val METEOR_S = 0.9f
+private const val METEOR_CHANCE = 0.4f
 private val CLEAR_FADE = 32.dp

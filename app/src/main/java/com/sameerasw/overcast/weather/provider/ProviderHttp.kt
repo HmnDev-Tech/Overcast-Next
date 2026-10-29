@@ -20,7 +20,24 @@ internal object ProviderHttp {
 
     suspend fun post(url: String, body: String, headers: Map<String, String> = emptyMap()): String = request(url, headers, body)
 
-    private suspend fun request(url: String, headers: Map<String, String>, body: String?): String = withContext(Dispatchers.IO) {
+    class Response(val code: Int, val body: String)
+
+    suspend fun postForResponse(url: String, body: String, headers: Map<String, String> = emptyMap()): Response = execute(url, headers, body)
+
+    private suspend fun request(url: String, headers: Map<String, String>, body: String?): String {
+        val response = execute(url, headers, body)
+        val code = response.code
+        if (code == HttpURLConnection.HTTP_UNAUTHORIZED || code == HttpURLConnection.HTTP_FORBIDDEN) {
+            throw WeatherProviderException(WeatherProviderException.Reason.INVALID_KEY)
+        }
+        if (code == 429) throw WeatherProviderException(WeatherProviderException.Reason.RATE_LIMITED)
+        if (code !in 200..299) {
+            throw WeatherProviderException(WeatherProviderException.Reason.BAD_RESPONSE, "HTTP $code")
+        }
+        return response.body
+    }
+
+    private suspend fun execute(url: String, headers: Map<String, String>, body: String?): Response = withContext(Dispatchers.IO) {
         val connection = try {
             URL(url).openConnection() as HttpURLConnection
         } catch (e: IOException) {
@@ -38,14 +55,8 @@ internal object ProviderHttp {
                 connection.outputStream.use { it.write(body.toByteArray(Charsets.UTF_8)) }
             }
             val code = connection.responseCode
-            if (code == HttpURLConnection.HTTP_UNAUTHORIZED || code == HttpURLConnection.HTTP_FORBIDDEN) {
-                throw WeatherProviderException(WeatherProviderException.Reason.INVALID_KEY)
-            }
-            if (code == 429) throw WeatherProviderException(WeatherProviderException.Reason.RATE_LIMITED)
-            if (code !in 200..299) {
-                throw WeatherProviderException(WeatherProviderException.Reason.BAD_RESPONSE, "HTTP $code")
-            }
-            connection.inputStream.bufferedReader().use { it.readText() }
+            val stream = if (code in 200..299) connection.inputStream else connection.errorStream
+            Response(code, stream?.bufferedReader()?.use { it.readText() }.orEmpty())
         } catch (e: IOException) {
             throw WeatherProviderException(WeatherProviderException.Reason.NETWORK, e.message)
         } finally {

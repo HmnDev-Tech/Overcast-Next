@@ -24,7 +24,7 @@ object WidgetTemperatureRenderer {
 
     private val faces = ConcurrentHashMap<String, Typeface>()
 
-    private fun typeface(context: Context, widthAxis: Int, weightAxis: Int): Typeface =
+    internal fun typeface(context: Context, widthAxis: Int, weightAxis: Int): Typeface =
         faces.getOrPut("$widthAxis/$weightAxis") { build(context.applicationContext, widthAxis, weightAxis) }
 
     private fun build(context: Context, widthAxis: Int, weightAxis: Int): Typeface {

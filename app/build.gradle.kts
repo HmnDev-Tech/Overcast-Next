@@ -31,8 +31,8 @@ android {
         applicationId = "com.sameerasw.overcast"
         minSdk = 26
         targetSdk = 37
-        versionCode = 3
-        versionName = "1.2"
+        versionCode = 5
+        versionName = "2.1"
 
         testInstrumentationRunner = "androidx.test.runner.AndroidJUnitRunner"
     }
@@ -117,6 +117,7 @@ dependencies {
     implementation(libs.play.services.location)
     "playImplementation"(libs.play.billing.ktx)
     implementation(libs.gson)
+    implementation(libs.mlkit.genai.prompt)
     implementation(project(":island-sdk-compose"))
     implementation(libs.coil.compose)
     implementation(libs.aboutlibraries.core)

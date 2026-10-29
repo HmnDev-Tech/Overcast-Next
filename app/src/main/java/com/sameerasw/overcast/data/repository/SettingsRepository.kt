@@ -2,9 +2,14 @@ package com.sameerasw.overcast.data.repository
 
 import android.content.Context
 import android.content.SharedPreferences
+import com.sameerasw.overcast.ui.features.weather.MainSection
+import com.sameerasw.overcast.utils.CompatibilityFeature
 import com.sameerasw.overcast.utils.CompatibilityMode
 import com.sameerasw.overcast.utils.DeviceUtils
 import com.sameerasw.overcast.weather.WeatherIconStyle
+import com.sameerasw.overcast.weather.ai.AiProviders
+import com.sameerasw.overcast.weather.aqi.AqiProviders
+import com.sameerasw.overcast.weather.radar.RadarProviders
 import com.sameerasw.overcast.weather.effects.WeatherSimulation
 import com.sameerasw.overcast.weather.widget.WeatherWidgetUpdater
 import com.sameerasw.overcast.weather.effects.WeatherSimulationPreset
@@ -55,6 +60,7 @@ class SettingsRepository(
         const val KEY_DEBUG_SIMULATED_WEATHER = "debug_simulated_weather"
         const val KEY_DEBUG_SIMULATED_ALERT = "debug_simulated_alert"
         const val KEY_DEBUG_SIMULATED_TIME = "debug_simulated_time"
+        const val KEY_DEBUG_SIMULATED_SCENE = "debug_simulated_scene"
         const val KEY_DEBUG_SIMULATED_TEMP = "debug_simulated_temp"
 
         const val WEATHER_UNITS_SYSTEM = "system"
@@ -104,6 +110,9 @@ class SettingsRepository(
     fun isWeatherEffectsEnabled(): Boolean = getBoolean(KEY_WEATHER_EFFECTS, true)
     fun setWeatherEffectsEnabled(enabled: Boolean) = putBoolean(KEY_WEATHER_EFFECTS, enabled)
 
+    fun isLocationSceneEnabled(): Boolean = getBoolean(KEY_LOCATION_SCENE, false)
+    fun setLocationSceneEnabled(enabled: Boolean) = putBoolean(KEY_LOCATION_SCENE, enabled)
+
     fun isWeatherHapticsEnabled(): Boolean = getBoolean(KEY_WEATHER_HAPTICS, true)
     fun setWeatherHapticsEnabled(enabled: Boolean) = putBoolean(KEY_WEATHER_HAPTICS, enabled)
 
@@ -144,6 +153,9 @@ class SettingsRepository(
 
     fun getSimulatedTimeOfDay(): String? =
         if (isWeatherExperimentalEnabled()) getString(KEY_DEBUG_SIMULATED_TIME, "auto")?.takeIf { it != "auto" } else null
+
+    fun getSimulatedScene(): String? =
+        if (isWeatherExperimentalEnabled()) getString(KEY_DEBUG_SIMULATED_SCENE, "auto")?.takeIf { it != "auto" } else null
 
     fun getSimulatedTempC(): Double? =
         if (isWeatherExperimentalEnabled()) getString(KEY_DEBUG_SIMULATED_TEMP, "auto")?.toDoubleOrNull() else null
@@ -208,8 +220,20 @@ class SettingsRepository(
 
     fun setAmbientForecastEnabled(enabled: Boolean) = putBoolean(KEY_AMBIENT_FORECAST, enabled)
 
-    fun isCompatibilityMode(): Boolean =
-        if (prefs.contains(KEY_COMPATIBILITY_MODE)) getBoolean(KEY_COMPATIBILITY_MODE, false) else DeviceUtils.isLowEndDevice(appContext)
+    // The low-end check runs once; its result is stored so later launches keep whatever the user ends up with.
+    fun isCompatibilityMode(): Boolean {
+        if (prefs.contains(KEY_COMPATIBILITY_MODE)) return getBoolean(KEY_COMPATIBILITY_MODE, false)
+        val lowEnd = DeviceUtils.isLowEndDevice(appContext)
+        prefs.edit().putBoolean(KEY_COMPATIBILITY_MODE, lowEnd).apply()
+        return lowEnd
+    }
+
+    fun isCompatibilityFeatureEnabled(feature: CompatibilityFeature): Boolean = getBoolean(feature.key, true)
+
+    fun setCompatibilityFeatureEnabled(feature: CompatibilityFeature, enabled: Boolean) {
+        putBoolean(feature.key, enabled)
+        CompatibilityMode.setFeature(feature, enabled)
+    }
 
     fun setCompatibilityMode(enabled: Boolean) {
         putBoolean(KEY_COMPATIBILITY_MODE, enabled)
