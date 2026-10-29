@@ -34,6 +34,8 @@ object WeatherIslandPayload {
 
     private const val PRIORITY = 58
     private const val PRIORITY_ALERT = 48
+    private const val HEIGHT_DP = 304
+    private const val HEIGHT_ALERT_DP = 378
 
     fun severeAlert(snapshot: WeatherSnapshot): WeatherAlert? =
         snapshot.activeAlerts().filter { it.severity.isSevere }.maxByOrNull { it.severity.ordinal }
@@ -42,7 +44,6 @@ object WeatherIslandPayload {
         if (snapshot == null) return WeatherIslandContent(IslandPayload(), emptyMap())
         val unit = WeatherUnits.from(settings).temperature
         val style = WeatherIconStyle.fromId(settings.getWeatherIconStyle())
-        val islandStyle = settings.getIslandStyleProfile()
         val alert = severeAlert(snapshot)
         val temperature = WeatherFormat.temperature(snapshot.tempC, unit)
 
@@ -82,7 +83,7 @@ object WeatherIslandPayload {
                 iconId = iconId,
                 tone = tone,
             ),
-            expanded = IslandExpandedPayload(heightDp = if (alert != null) islandStyle.heightAlertDp else islandStyle.heightDp),
+            expanded = IslandExpandedPayload(heightDp = if (alert != null) HEIGHT_ALERT_DP else HEIGHT_DP),
             interactions = IslandInteractionsPayload(
                 onTap = IslandAction(IslandActionType.EXPAND_ITEM, BRIEF_TARGET),
                 onLongPress = IslandAction(IslandActionType.OPEN_APP),
@@ -102,7 +103,7 @@ object WeatherIslandPayload {
             trailingIconId = trailingId,
             trailingText = snapshot.chanceOfRain?.let { "$it%" }.takeIf { alert == null && trailingId != null },
             trailingTone = if (alert != null) IslandTone.ALERT else IslandTone.ACCENT,
-            pageHeightDp = if (alert != null) islandStyle.heightAlertDp else islandStyle.heightDp,
+            pageHeightDp = if (alert != null) HEIGHT_ALERT_DP else HEIGHT_DP,
         )
         return WeatherIslandContent(IslandPayload(items = listOf(item), briefCards = listOf(card)), assets)
     }

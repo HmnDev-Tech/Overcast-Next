@@ -1,4 +1,4 @@
-# Overcast-Next ☁️
+# Overcast ☁️
 <img width="100" height="100" alt="ic_playstore" src="https://github.com/user-attachments/assets/2f3e9b3f-6d22-48f4-af5c-91d9a1723258" />
 
 Weather is also Essential.
@@ -57,7 +57,7 @@ Overcast is a Dynamic Island provider for [Essentials](https://github.com/sameer
 
 ## Installation
 
-Download the latest APK from the [releases page](https://github.com/HmnDev-Tech/Overcast-Next/releases/latest) and install it.
+Download the latest APK from the [releases page](https://github.com/sameerasw/Overcast/releases/latest) and install it.
 
 Requires Android 13 or newer.
 
@@ -75,7 +75,7 @@ The debug APK is written to `app/build/outputs/apk/github/debug/`.
 
 ## Contributing
 
-Bug reports, feature requests and pull requests are welcome. Use the [issue templates](https://github.com/HmnDev-Tech/Overcast-Next/issues/new/choose) to report a problem or suggest something.
+Bug reports, feature requests and pull requests are welcome. Use the [issue templates](https://github.com/sameerasw/Overcast/issues/new/choose) to report a problem or suggest something.
 
 Please read the [code of conduct](CODE_OF_CONDUCT.md) and the [security policy](SECURITY.md) before contributing.
 

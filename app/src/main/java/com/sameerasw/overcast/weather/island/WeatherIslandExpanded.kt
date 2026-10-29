@@ -107,13 +107,10 @@ fun WeatherIslandExpanded(
     val iconStyle = weather?.style ?: remember(snapshot) { WeatherIconStyle.fromId(settings.getWeatherIconStyle()) }
     val effectSpec = weather?.effectSpec?.takeIf { host?.powerSave != true } ?: WeatherEffectSpec.None
     val haptics = remember(context) { DeviceWeatherHaptics(context).takeIf { settings.isWeatherHapticsEnabled() } }
-    val islandStyle = remember(weather) { settings.getIslandStyleProfile() }
-    val showHourly = remember(weather) { settings.isIslandHourlyEnabled() } && islandStyle != IslandStyle.MINIMAL
-    val extraPadding = if (islandStyle == IslandStyle.PILL) 6.dp else 0.dp
     val clearTop = with(density) { (host?.cameraClearancePx ?: 0).toDp() }
     val compactHeight = with(density) { (host?.compactHeightPx ?: 0).toDp() }
     val outset = with(density) { (host?.outsetPx ?: 0).toDp() }
-    val sidePadding = with(density) { (host?.expandedPaddingPx ?: 0).toDp() } + outset + 8.dp + extraPadding
+    val sidePadding = with(density) { (host?.expandedPaddingPx ?: 0).toDp() } + outset + 8.dp
 
     val corner = with(density) { (host?.cornerPx ?: 0).toDp() }
     Box(
@@ -158,7 +155,7 @@ fun WeatherIslandExpanded(
             Spacer(Modifier.height(6.dp))
             Column(
                 modifier = Modifier.fillMaxWidth().padding(horizontal = sidePadding),
-                verticalArrangement = Arrangement.spacedBy(if (islandStyle == IslandStyle.MINIMAL) 6.dp else 10.dp),
+                verticalArrangement = Arrangement.spacedBy(10.dp),
             ) {
                 if (snapshot == null) {
                     if (state.loading) {
@@ -169,13 +166,11 @@ fun WeatherIslandExpanded(
                 } else {
                     Summary(snapshot, units)
                     WeatherIslandPayload.severeAlert(snapshot)?.let { AlertCard(it) }
-                    if (showHourly) HourlyStrip(snapshot, units, iconStyle)
-                    if (islandStyle.showDetails) {
-                        Row(horizontalArrangement = Arrangement.spacedBy(6.dp)) {
-                            DetailChip(R.drawable.rounded_water_drop_24, snapshot.humidity?.let { "$it%" } ?: "–", Modifier.weight(1f))
-                            DetailChip(R.drawable.rounded_air_24, WeatherFormat.wind(snapshot.windKph, units.wind), Modifier.weight(1f))
-                            DetailChip(R.drawable.rounded_rainy_24, snapshot.chanceOfRain?.let { "$it%" } ?: "–", Modifier.weight(1f))
-                        }
+                    HourlyStrip(snapshot, units, iconStyle)
+                    Row(horizontalArrangement = Arrangement.spacedBy(6.dp)) {
+                        DetailChip(R.drawable.rounded_water_drop_24, snapshot.humidity?.let { "$it%" } ?: "–", Modifier.weight(1f))
+                        DetailChip(R.drawable.rounded_air_24, WeatherFormat.wind(snapshot.windKph, units.wind), Modifier.weight(1f))
+                        DetailChip(R.drawable.rounded_rainy_24, snapshot.chanceOfRain?.let { "$it%" } ?: "–", Modifier.weight(1f))
                     }
                     UpdatedRow(snapshot, state.loading, state.error, onKeepAlive, onRefresh)
                 }
